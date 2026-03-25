@@ -1,0 +1,16 @@
+{
+  "name": "splitsy-app",
+  "private": true,
+  "packageManager": "bun@1.3.3",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "bun run --cwd apps/expo web",
+    "dev:ios": "bun run --cwd apps/expo ios",
+    "dev:android": "bun run --cwd apps/expo android",
+    "test": "bun test packages/domain/src",
+    "typecheck": "bun run --cwd packages/domain typecheck && bun run --cwd apps/expo typecheck"
+  }
+}
