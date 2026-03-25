@@ -13,6 +13,8 @@ export type TripsRepository = {
   listTrips: () => Promise<Trip[]>;
   listExpenses: (tripId: string) => Promise<Expense[]>;
   createExpense: (tripId: string, draft: AddExpenseInput) => Promise<Expense>;
+  updateExpense: (expenseId: string, tripId: string, draft: AddExpenseInput) => Promise<Expense>;
+  deleteExpense: (expenseId: string) => Promise<void>;
   createTrip: (input: {
     name: string;
     destination?: string;
@@ -48,6 +50,33 @@ const demoRepository = (): TripsRepository => {
 
       expenses = [expense, ...expenses];
       return expense;
+    },
+    updateExpense: async (expenseId, tripId, draft) => {
+      const existingExpense = expenses.find((expense) => expense.id === expenseId);
+
+      if (!existingExpense) {
+        throw new Error("Expense not found");
+      }
+
+      const updatedExpense: Expense = {
+        ...existingExpense,
+        tripId,
+        amount: draft.amount,
+        currencyCode: draft.currencyCode,
+        conversionRateToTripCurrency: draft.conversionRateToTripCurrency,
+        tripAmount: draft.tripAmount,
+        category: draft.category,
+        customCategory: draft.customCategory,
+        note: draft.note,
+        paidByMemberId: draft.paidByMemberId,
+        involvedMemberIds: draft.involvedMemberIds
+      };
+
+      expenses = expenses.map((expense) => (expense.id === expenseId ? updatedExpense : expense));
+      return updatedExpense;
+    },
+    deleteExpense: async (expenseId) => {
+      expenses = expenses.filter((expense) => expense.id !== expenseId);
     },
     createTrip: async (input) => {
       const trip: Trip = {
@@ -89,6 +118,8 @@ const demoRepository = (): TripsRepository => {
 
 const supabaseRepository = (): TripsRepository => {
   const supabase: any = createSupabaseClient();
+  const isUuid = (value: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
   const mapTrip = (row: any): Trip => ({
     id: row.id,
@@ -98,9 +129,9 @@ const supabaseRepository = (): TripsRepository => {
     startDate: row.start_date,
     endDate: row.end_date,
     members: (row.trip_members ?? []).map((memberRow: any) => ({
-      id: memberRow.member_id,
-      displayName: memberRow.users?.display_name ?? "Member",
-      avatarUrl: memberRow.users?.avatar_url ?? null
+      id: memberRow.id,
+      displayName: memberRow.display_name ?? "Member",
+      avatarUrl: memberRow.avatar_url ?? null
     }))
   });
 
@@ -120,7 +151,7 @@ const supabaseRepository = (): TripsRepository => {
     listTrips: async () => {
       const { data, error } = await supabase
         .from("trips")
-        .select("id, name, destination, trip_currency_code, start_date, end_date, trip_members(member_id, users(display_name, avatar_url))")
+        .select("id, name, destination, trip_currency_code, start_date, end_date, trip_members(id, user_id, display_name, avatar_url, email)")
         .order("start_date", { ascending: false });
 
       if (error) {
@@ -202,6 +233,70 @@ const supabaseRepository = (): TripsRepository => {
         createdAt: insertedExpense.created_at
       };
     },
+    updateExpense: async (expenseId, tripId, draft) => {
+      const { data: updatedExpense, error: expenseError } = await supabase
+        .from("expenses")
+        .update({
+          amount: draft.amount,
+          currency_code: draft.currencyCode,
+          trip_conversion_rate: draft.conversionRateToTripCurrency,
+          trip_amount: draft.tripAmount,
+          category: draft.category,
+          custom_category: draft.customCategory ?? null,
+          note: draft.note ?? null,
+          paid_by_member_id: draft.paidByMemberId
+        })
+        .eq("id", expenseId)
+        .eq("trip_id", tripId)
+        .select("id, trip_id, amount, currency_code, trip_conversion_rate, trip_amount, category, custom_category, note, paid_by_member_id, created_at")
+        .single();
+
+      if (expenseError) {
+        throw expenseError;
+      }
+
+      const { error: deleteParticipantsError } = await supabase
+        .from("expense_participants")
+        .delete()
+        .eq("expense_id", expenseId);
+
+      if (deleteParticipantsError) {
+        throw deleteParticipantsError;
+      }
+
+      const participantRows = draft.involvedMemberIds.map((memberId) => ({
+        expense_id: expenseId,
+        member_id: memberId
+      }));
+
+      const { error: participantError } = await supabase.from("expense_participants").insert(participantRows);
+
+      if (participantError) {
+        throw participantError;
+      }
+
+      return {
+        id: updatedExpense.id,
+        tripId: updatedExpense.trip_id,
+        amount: Number(updatedExpense.amount),
+        currencyCode: updatedExpense.currency_code,
+        conversionRateToTripCurrency: Number(updatedExpense.trip_conversion_rate),
+        tripAmount: Number(updatedExpense.trip_amount),
+        category: updatedExpense.category,
+        customCategory: updatedExpense.custom_category,
+        note: updatedExpense.note,
+        paidByMemberId: updatedExpense.paid_by_member_id,
+        involvedMemberIds: draft.involvedMemberIds,
+        createdAt: updatedExpense.created_at
+      };
+    },
+    deleteExpense: async (expenseId) => {
+      const { error } = await supabase.from("expenses").delete().eq("id", expenseId);
+
+      if (error) {
+        throw error;
+      }
+    },
     createTrip: async (input) => {
       const { error: profileError } = await supabase.from("users").upsert({
         id: input.owner.id,
@@ -229,10 +324,17 @@ const supabaseRepository = (): TripsRepository => {
         throw tripError;
       }
 
-      const { error: membershipError } = await supabase.from("trip_members").insert({
-        trip_id: tripRow.id,
-        member_id: input.owner.id
-      });
+      const { data: ownerMemberRow, error: membershipError } = await supabase
+        .from("trip_members")
+        .insert({
+          trip_id: tripRow.id,
+          user_id: input.owner.id,
+          display_name: input.owner.displayName,
+          email: input.owner.email ?? null,
+          avatar_url: input.owner.avatarUrl ?? null
+        })
+        .select("id, display_name, avatar_url")
+        .single();
 
       if (membershipError) {
         throw membershipError;
@@ -247,28 +349,33 @@ const supabaseRepository = (): TripsRepository => {
         endDate: tripRow.end_date,
         members: [
           {
-            id: input.owner.id,
-            displayName: input.owner.displayName,
-            avatarUrl: input.owner.avatarUrl ?? null
+            id: ownerMemberRow.id,
+            displayName: ownerMemberRow.display_name,
+            avatarUrl: ownerMemberRow.avatar_url ?? null
           }
         ]
       };
     },
     addTripMember: async (tripId, member) => {
-      const { error: profileError } = await supabase.from("users").upsert({
-        id: member.id,
-        email: member.email ?? null,
-        display_name: member.displayName,
-        avatar_url: member.avatarUrl ?? null
-      });
+      if (isUuid(member.id)) {
+        const { error: profileError } = await supabase.from("users").upsert({
+          id: member.id,
+          email: member.email ?? null,
+          display_name: member.displayName,
+          avatar_url: member.avatarUrl ?? null
+        });
 
-      if (profileError) {
-        throw profileError;
+        if (profileError) {
+          throw profileError;
+        }
       }
 
-      const { error: membershipError } = await supabase.from("trip_members").upsert({
+      const { error: membershipError } = await supabase.from("trip_members").insert({
         trip_id: tripId,
-        member_id: member.id
+        user_id: isUuid(member.id) ? member.id : null,
+        display_name: member.displayName,
+        email: member.email ?? null,
+        avatar_url: member.avatarUrl ?? null
       });
 
       if (membershipError) {
@@ -277,7 +384,7 @@ const supabaseRepository = (): TripsRepository => {
 
       const { data, error } = await supabase
         .from("trips")
-        .select("id, name, destination, trip_currency_code, start_date, end_date, trip_members(member_id, users(display_name, avatar_url))")
+        .select("id, name, destination, trip_currency_code, start_date, end_date, trip_members(id, user_id, display_name, avatar_url, email)")
         .eq("id", tripId)
         .single();
 

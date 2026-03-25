@@ -1,21 +1,33 @@
 import { useLocalSearchParams } from "expo-router";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useEffect, useMemo, useState } from "react";
+import { StyleSheet, View, useWindowDimensions } from "react-native";
 
 import { PRESET_CATEGORIES, settleTrip, validateExpenseDraft } from "@splitsy/domain";
+import type { Expense } from "@splitsy/domain";
 
 import { formatCurrency } from "../../src/lib/format";
-import { SAMPLE_RATES } from "../../src/lib/rates";
+import { getConversionRate, MAJOR_CURRENCIES } from "../../src/lib/rates";
 import { useTrips } from "../../src/providers/trips-provider";
+import { AppScreen } from "../../src/ui/layout/AppScreen";
+import { AppButton } from "../../src/ui/primitives/AppButton";
+import { AppInput } from "../../src/ui/primitives/AppInput";
+import { AppText } from "../../src/ui/primitives/AppText";
+import { Chip } from "../../src/ui/primitives/Chip";
+import { SectionCard } from "../../src/ui/primitives/SectionCard";
+import { SurfaceCard } from "../../src/ui/primitives/SurfaceCard";
+import { theme } from "../../src/ui/theme";
 
 export default function TripDetailsScreen() {
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
-  const { getTripById, getExpensesForTrip, addExpense, addTripMember, isLoading } = useTrips();
+  const { getTripById, getExpensesForTrip, addExpense, updateExpense, deleteExpense, addTripMember, isLoading } =
+    useTrips();
   const trip = getTripById(tripId);
   const expenses = getExpensesForTrip(tripId);
+  const { width } = useWindowDimensions();
+  const wide = width >= 1040;
 
   const [amount, setAmount] = useState("");
-  const [currencyCode, setCurrencyCode] = useState("EUR");
+  const [currencyCode, setCurrencyCode] = useState(trip?.tripCurrencyCode ?? "USD");
   const [category, setCategory] = useState(PRESET_CATEGORIES[0].id);
   const [customCategory, setCustomCategory] = useState("");
   const [note, setNote] = useState("");
@@ -24,6 +36,9 @@ export default function TripDetailsScreen() {
   const [memberName, setMemberName] = useState("");
   const [memberEmail, setMemberEmail] = useState("");
   const [errors, setErrors] = useState<string[]>([]);
+  const [isSavingExpense, setIsSavingExpense] = useState(false);
+  const [isAddingMember, setIsAddingMember] = useState(false);
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!trip) {
@@ -39,6 +54,12 @@ export default function TripDetailsScreen() {
     }
   }, [paidByMemberId, selectedMembers.length, trip]);
 
+  useEffect(() => {
+    if (trip) {
+      setCurrencyCode(trip.tripCurrencyCode);
+    }
+  }, [trip?.id, trip?.tripCurrencyCode]);
+
   const settlement = useMemo(() => {
     if (!trip) {
       return null;
@@ -53,17 +74,21 @@ export default function TripDetailsScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.emptyState}>
-        <Text style={styles.emptyTitle}>Loading trip…</Text>
-      </View>
+      <AppScreen>
+        <SurfaceCard>
+          <AppText variant="sectionTitle">Loading trip...</AppText>
+        </SurfaceCard>
+      </AppScreen>
     );
   }
 
   if (!trip) {
     return (
-      <View style={styles.emptyState}>
-        <Text style={styles.emptyTitle}>Trip not found.</Text>
-      </View>
+      <AppScreen>
+        <SurfaceCard>
+          <AppText variant="sectionTitle">Trip not found.</AppText>
+        </SurfaceCard>
+      </AppScreen>
     );
   }
 
@@ -91,18 +116,63 @@ export default function TripDetailsScreen() {
       return;
     }
 
-    const rate = SAMPLE_RATES[draft.currencyCode] ?? 1;
+    const rate = getConversionRate(draft.currencyCode, trip.tripCurrencyCode);
 
-    await addExpense(trip.id, {
-      ...draft,
-      conversionRateToTripCurrency: rate,
-      tripAmount: Math.round(numericAmount * rate * 100) / 100
-    });
+    setIsSavingExpense(true);
 
-    setAmount("");
-    setNote("");
-    setCustomCategory("");
+    try {
+      const expensePayload = {
+        ...draft,
+        conversionRateToTripCurrency: rate,
+        tripAmount: Math.round(numericAmount * rate * 100) / 100
+      };
+
+      if (editingExpenseId) {
+        await updateExpense(editingExpenseId, trip.id, expensePayload);
+      } else {
+        await addExpense(trip.id, expensePayload);
+      }
+
+      setAmount("");
+      setNote("");
+      setCustomCategory("");
+      setEditingExpenseId(null);
+      setErrors([]);
+    } finally {
+      setIsSavingExpense(false);
+    }
+  };
+
+  const startEditingExpense = (expense: Expense) => {
+    setEditingExpenseId(expense.id);
+    setAmount(String(expense.amount));
+    setCurrencyCode(expense.currencyCode);
+    setCategory(expense.category);
+    setCustomCategory(expense.customCategory ?? "");
+    setNote(expense.note ?? "");
+    setPaidByMemberId(expense.paidByMemberId);
+    setSelectedMembers(expense.involvedMemberIds);
     setErrors([]);
+  };
+
+  const cancelEditingExpense = () => {
+    setEditingExpenseId(null);
+    setAmount("");
+    setCurrencyCode(trip.tripCurrencyCode);
+    setCategory(PRESET_CATEGORIES[0].id);
+    setCustomCategory("");
+    setNote("");
+    setPaidByMemberId(trip.members[0]?.id ?? "");
+    setSelectedMembers(trip.members.map((member) => member.id));
+    setErrors([]);
+  };
+
+  const removeExpense = async (expenseId: string) => {
+    await deleteExpense(expenseId);
+
+    if (editingExpenseId === expenseId) {
+      cancelEditingExpense();
+    }
   };
 
   const submitMember = async () => {
@@ -110,356 +180,335 @@ export default function TripDetailsScreen() {
       return;
     }
 
-    await addTripMember(trip.id, {
-      displayName: memberName,
-      email: memberEmail
-    });
+    setIsAddingMember(true);
 
-    setMemberName("");
-    setMemberEmail("");
+    try {
+      await addTripMember(trip.id, {
+        displayName: memberName,
+        email: memberEmail
+      });
+
+      setMemberName("");
+      setMemberEmail("");
+    } finally {
+      setIsAddingMember(false);
+    }
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.summaryCard}>
-        <Text style={styles.summaryEyebrow}>Trip Summary</Text>
-        <Text style={styles.summaryTitle}>{trip.name}</Text>
-        <Text style={styles.summaryBody}>
-          {trip.destination ?? "No destination"} · settle in {trip.tripCurrencyCode}
-        </Text>
-        <Text style={styles.summaryTotal}>
-          {settlement ? formatCurrency(settlement.totalTripSpend, settlement.currencyCode) : ""}
-        </Text>
-      </View>
+    <AppScreen maxWidth={1200}>
+      <View style={[styles.layout, wide ? styles.layoutWide : null]}>
+        <View style={styles.primaryColumn}>
+          <SurfaceCard tone="hero" style={styles.summaryCard}>
+            <AppText variant="eyebrow" color="accent">
+              Trip Summary
+            </AppText>
+            <AppText variant="title" color="inverse">
+              {trip.name}
+            </AppText>
+            <AppText variant="bodySm" color="accent">
+              {trip.destination ?? "No destination"} · settle in {trip.tripCurrencyCode}
+            </AppText>
+            <AppText variant="sectionTitle" color="inverse">
+              {settlement ? formatCurrency(settlement.totalTripSpend, settlement.currencyCode) : ""}
+            </AppText>
+          </SurfaceCard>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Members</Text>
-        <View style={styles.pillWrap}>
-          {trip.members.map((member) => (
-            <View key={member.id} style={styles.memberBadge}>
-              <Text style={styles.memberBadgeText}>{member.displayName}</Text>
-            </View>
-          ))}
-        </View>
-        <TextInput
-          value={memberName}
-          onChangeText={setMemberName}
-          placeholder="New member name"
-          style={styles.input}
-        />
-        <TextInput
-          value={memberEmail}
-          onChangeText={setMemberEmail}
-          placeholder="Member email for future invites"
-          autoCapitalize="none"
-          keyboardType="email-address"
-          style={styles.input}
-        />
-        <Pressable onPress={submitMember} style={styles.secondaryButton}>
-          <Text style={styles.secondaryButtonText}>Add member</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Add expense</Text>
-        <TextInput
-          value={amount}
-          onChangeText={setAmount}
-          placeholder="Amount"
-          keyboardType="decimal-pad"
-          style={styles.input}
-        />
-        <TextInput
-          value={currencyCode}
-          onChangeText={setCurrencyCode}
-          placeholder="Currency code"
-          autoCapitalize="characters"
-          style={styles.input}
-        />
-        <TextInput value={note} onChangeText={setNote} placeholder="Note" style={styles.input} />
-
-        <ScrollView horizontal contentContainerStyle={styles.pillRow} showsHorizontalScrollIndicator={false}>
-          {PRESET_CATEGORIES.map((item) => (
-            <Pressable
-              key={item.id}
-              onPress={() => setCategory(item.id)}
-              style={[styles.pill, category === item.id && styles.pillActive]}
-            >
-              <Text style={[styles.pillText, category === item.id && styles.pillTextActive]}>{item.label}</Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-
-        {category === "custom" ? (
-          <TextInput
-            value={customCategory}
-            onChangeText={setCustomCategory}
-            placeholder="Custom category label"
-            style={styles.input}
-          />
-        ) : null}
-
-        <Text style={styles.label}>Paid by</Text>
-        <View style={styles.pillWrap}>
-          {trip.members.map((member) => (
-            <Pressable
-              key={member.id}
-              onPress={() => setPaidByMemberId(member.id)}
-              style={[styles.pill, paidByMemberId === member.id && styles.pillActive]}
-            >
-              <Text style={[styles.pillText, paidByMemberId === member.id && styles.pillTextActive]}>
-                {member.displayName}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-
-        <Text style={styles.label}>Involved members</Text>
-        <View style={styles.pillWrap}>
-          {trip.members.map((member) => {
-            const selected = selectedMembers.includes(member.id);
-            return (
-              <Pressable
-                key={member.id}
-                onPress={() => toggleMember(member.id)}
-                style={[styles.pill, selected && styles.pillActive]}
-              >
-                <Text style={[styles.pillText, selected && styles.pillTextActive]}>{member.displayName}</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        {errors.length > 0 ? (
-          <View style={styles.errorBox}>
-            {errors.map((error) => (
-              <Text key={error} style={styles.errorText}>
-                {error}
-              </Text>
-            ))}
-          </View>
-        ) : null}
-
-        <Pressable onPress={submitExpense} style={styles.primaryButton}>
-          <Text style={styles.primaryButtonText}>Save expense</Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Balances</Text>
-        {settlement?.balances.map((balance) => {
-          const member = trip.members.find((item) => item.id === balance.memberId);
-          return (
-            <View key={balance.memberId} style={styles.rowCard}>
-              <View>
-                <Text style={styles.rowTitle}>{member?.displayName ?? balance.memberId}</Text>
-                <Text style={styles.rowMeta}>
-                  Paid {formatCurrency(balance.paid, trip.tripCurrencyCode)} · Owes{" "}
-                  {formatCurrency(balance.owed, trip.tripCurrencyCode)}
-                </Text>
+          <SectionCard
+            title={editingExpenseId ? "Edit expense" : "Add expense"}
+            description="Capture who paid, who joined, and the original currency."
+          >
+            <AppInput
+              label="Amount"
+              value={amount}
+              onChangeText={setAmount}
+              placeholder="48.00"
+              keyboardType="decimal-pad"
+            />
+            <View style={styles.group}>
+              <AppText variant="meta" color="muted">
+                Original currency
+              </AppText>
+              <View style={styles.chipWrap}>
+                {MAJOR_CURRENCIES.map((currency) => (
+                  <Chip
+                    key={currency.code}
+                    label={currency.code}
+                    selected={currencyCode === currency.code}
+                    onPress={() => setCurrencyCode(currency.code)}
+                  />
+                ))}
               </View>
-              <Text style={[styles.netAmount, balance.net < 0 ? styles.netNegative : styles.netPositive]}>
-                {formatCurrency(balance.net, trip.tripCurrencyCode)}
-              </Text>
+              <AppText variant="bodySm" color="muted">
+                Expense amounts are converted into {trip.tripCurrencyCode} for settlement.
+              </AppText>
             </View>
-          );
-        })}
-      </View>
+            <AppInput label="Note" value={note} onChangeText={setNote} placeholder="Dinner by the river" />
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Repayments</Text>
-        {settlement?.transfers.length ? (
-          settlement.transfers.map((transfer) => {
-            const from = trip.members.find((member) => member.id === transfer.fromMemberId);
-            const to = trip.members.find((member) => member.id === transfer.toMemberId);
-            return (
-              <View key={`${transfer.fromMemberId}-${transfer.toMemberId}`} style={styles.rowCard}>
-                <Text style={styles.rowTitle}>
-                  {from?.displayName} pays {to?.displayName}
-                </Text>
-                <Text style={styles.netAmount}>{formatCurrency(transfer.amount, transfer.currencyCode)}</Text>
+            <View style={styles.group}>
+              <AppText variant="meta" color="muted">
+                Category
+              </AppText>
+              <View style={styles.chipWrap}>
+                {PRESET_CATEGORIES.map((item) => (
+                  <Chip
+                    key={item.id}
+                    label={item.label}
+                    selected={category === item.id}
+                    onPress={() => setCategory(item.id)}
+                  />
+                ))}
               </View>
-            );
-          })
-        ) : (
-          <Text style={styles.rowMeta}>Trip is already settled.</Text>
-        )}
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Expenses</Text>
-        {expenses.map((expense) => (
-          <View key={expense.id} style={styles.rowCard}>
-            <View>
-              <Text style={styles.rowTitle}>{expense.note || expense.category}</Text>
-              <Text style={styles.rowMeta}>
-                {formatCurrency(expense.amount, expense.currencyCode)} {"->"}{" "}
-                {formatCurrency(expense.tripAmount, trip.tripCurrencyCode)}
-              </Text>
             </View>
-            <Text style={styles.rowMeta}>{expense.involvedMemberIds.length} people</Text>
-          </View>
-        ))}
+
+            {category === "custom" ? (
+              <AppInput
+                label="Custom category"
+                value={customCategory}
+                onChangeText={setCustomCategory}
+                placeholder="Tickets"
+              />
+            ) : null}
+
+            <View style={styles.group}>
+              <AppText variant="meta" color="muted">
+                Paid by
+              </AppText>
+              <View style={styles.chipWrap}>
+                {trip.members.map((member) => (
+                  <Chip
+                    key={member.id}
+                    label={member.displayName}
+                    selected={paidByMemberId === member.id}
+                    onPress={() => setPaidByMemberId(member.id)}
+                  />
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.group}>
+              <AppText variant="meta" color="muted">
+                Involved members
+              </AppText>
+              <View style={styles.chipWrap}>
+                {trip.members.map((member) => {
+                  const selected = selectedMembers.includes(member.id);
+
+                  return (
+                    <Chip
+                      key={member.id}
+                      label={member.displayName}
+                      selected={selected}
+                      onPress={() => toggleMember(member.id)}
+                    />
+                  );
+                })}
+              </View>
+            </View>
+
+            {errors.length > 0 ? (
+              <SurfaceCard tone="muted" style={styles.errorBox}>
+                {errors.map((error) => (
+                  <AppText key={error} variant="bodySm" color="danger">
+                    {error}
+                  </AppText>
+                ))}
+              </SurfaceCard>
+            ) : null}
+
+            <View style={styles.actionRow}>
+              <AppButton onPress={submitExpense} disabled={isSavingExpense}>
+                {isSavingExpense ? "Saving..." : editingExpenseId ? "Save changes" : "Save expense"}
+              </AppButton>
+              {editingExpenseId ? (
+                <AppButton onPress={cancelEditingExpense} variant="secondary">
+                  Cancel edit
+                </AppButton>
+              ) : null}
+            </View>
+          </SectionCard>
+
+          <SectionCard
+            title="Expenses"
+            description="Every expense keeps the original amount and the converted trip value."
+          >
+            {expenses.length ? (
+              expenses.map((expense) => (
+                <View key={expense.id} style={styles.rowCard}>
+                  <View style={styles.rowCopy}>
+                    <AppText variant="bodySm" color="secondary" style={styles.rowTitle}>
+                      {expense.note || expense.category}
+                    </AppText>
+                    <AppText variant="bodySm" color="muted">
+                      {formatCurrency(expense.amount, expense.currencyCode)} {"->"}{" "}
+                      {formatCurrency(expense.tripAmount, trip.tripCurrencyCode)}
+                    </AppText>
+                  </View>
+                  <View style={styles.expenseMeta}>
+                    <AppText variant="bodySm" color="muted">
+                      {expense.involvedMemberIds.length} people
+                    </AppText>
+                    <View style={styles.expenseActions}>
+                      <AppButton onPress={() => startEditingExpense(expense)} variant="secondary" fullWidth={false}>
+                        Edit
+                      </AppButton>
+                      <AppButton onPress={() => removeExpense(expense.id)} variant="secondary" fullWidth={false}>
+                        Delete
+                      </AppButton>
+                    </View>
+                  </View>
+                </View>
+              ))
+            ) : (
+              <AppText variant="bodySm" color="muted">
+                No expenses yet. Add the first one above to start balancing the trip.
+              </AppText>
+            )}
+          </SectionCard>
+        </View>
+
+        <View style={styles.secondaryColumn}>
+          <SectionCard title="Balances" description="Positive values are owed back. Negative values still owe the group.">
+            {settlement?.balances.map((balance) => {
+              const member = trip.members.find((item) => item.id === balance.memberId);
+
+              return (
+                <View key={balance.memberId} style={styles.rowCard}>
+                  <View style={styles.rowCopy}>
+                    <AppText variant="bodySm" color="secondary" style={styles.rowTitle}>
+                      {member?.displayName ?? balance.memberId}
+                    </AppText>
+                    <AppText variant="bodySm" color="muted">
+                      Paid {formatCurrency(balance.paid, trip.tripCurrencyCode)} · Owes{" "}
+                      {formatCurrency(balance.owed, trip.tripCurrencyCode)}
+                    </AppText>
+                  </View>
+                  <AppText
+                    variant="bodySm"
+                    color={balance.net < 0 ? "danger" : balance.net > 0 ? "success" : "muted"}
+                    style={styles.netAmount}
+                  >
+                    {formatCurrency(balance.net, trip.tripCurrencyCode)}
+                  </AppText>
+                </View>
+              );
+            })}
+          </SectionCard>
+
+          <SectionCard title="Repayments" description="SplitTrip minimizes the number of transfers needed to settle up.">
+            {settlement?.transfers.length ? (
+              settlement.transfers.map((transfer) => {
+                const from = trip.members.find((member) => member.id === transfer.fromMemberId);
+                const to = trip.members.find((member) => member.id === transfer.toMemberId);
+
+                return (
+                  <View key={`${transfer.fromMemberId}-${transfer.toMemberId}`} style={styles.rowCard}>
+                    <View style={styles.rowCopy}>
+                      <AppText variant="bodySm" color="secondary" style={styles.rowTitle}>
+                        {from?.displayName} pays {to?.displayName}
+                      </AppText>
+                    </View>
+                    <AppText variant="bodySm" color="primary" style={styles.netAmount}>
+                      {formatCurrency(transfer.amount, transfer.currencyCode)}
+                    </AppText>
+                  </View>
+                );
+              })
+            ) : (
+              <AppText variant="bodySm" color="muted">
+                Trip is already settled.
+              </AppText>
+            )}
+          </SectionCard>
+
+          <SectionCard title="Members" description="Invite everyone who should be included in balances and settlements.">
+            <View style={styles.chipWrap}>
+              {trip.members.map((member) => (
+                <Chip key={member.id} label={member.displayName} tone="success" />
+              ))}
+            </View>
+            <AppInput
+              label="New member name"
+              value={memberName}
+              onChangeText={setMemberName}
+              placeholder="Emma"
+            />
+            <AppInput
+              label="Member email"
+              value={memberEmail}
+              onChangeText={setMemberEmail}
+              placeholder="emma@example.com"
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+            <AppButton onPress={submitMember} variant="secondary" disabled={isAddingMember}>
+              {isAddingMember ? "Adding..." : "Add member"}
+            </AppButton>
+          </SectionCard>
+        </View>
       </View>
-    </ScrollView>
+    </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 20,
-    gap: 16
+  layout: {
+    gap: theme.spacing.lg
   },
-  emptyState: {
+  layoutWide: {
+    flexDirection: "row",
+    alignItems: "flex-start"
+  },
+  primaryColumn: {
+    flex: 1.5,
+    gap: theme.spacing.lg
+  },
+  secondaryColumn: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center"
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: "700"
+    gap: theme.spacing.lg
   },
   summaryCard: {
-    gap: 6,
-    padding: 22,
-    borderRadius: 28,
-    backgroundColor: "#173331"
+    gap: theme.spacing.sm
   },
-  summaryEyebrow: {
-    color: "#ffcb77",
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 1.3
+  group: {
+    gap: theme.spacing.sm
   },
-  summaryTitle: {
-    color: "#fff8ee",
-    fontSize: 28,
-    fontWeight: "800"
-  },
-  summaryBody: {
-    color: "#d2dfda",
-    fontSize: 15
-  },
-  summaryTotal: {
-    color: "#fff8ee",
-    fontSize: 28,
-    fontWeight: "800",
-    marginTop: 8
-  },
-  section: {
-    gap: 12,
-    padding: 18,
-    borderRadius: 24,
-    backgroundColor: "#fff8ee"
-  },
-  sectionTitle: {
-    color: "#172220",
-    fontSize: 20,
-    fontWeight: "700"
-  },
-  input: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 16,
-    backgroundColor: "#f3ecdf",
-    color: "#1f2d2b"
-  },
-  label: {
-    color: "#5d6765",
-    fontSize: 13,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 1.1
-  },
-  pillRow: {
-    gap: 8
-  },
-  pillWrap: {
+  chipWrap: {
     flexDirection: "row",
-    gap: 8,
-    flexWrap: "wrap"
-  },
-  pill: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: "#e9ded0"
-  },
-  pillActive: {
-    backgroundColor: "#173331"
-  },
-  pillText: {
-    color: "#284240",
-    fontWeight: "600"
-  },
-  pillTextActive: {
-    color: "#fff8ee"
-  },
-  memberBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: "#d6e4df"
-  },
-  memberBadgeText: {
-    color: "#173331",
-    fontWeight: "700"
+    flexWrap: "wrap",
+    gap: theme.spacing.sm
   },
   errorBox: {
-    gap: 4,
-    padding: 12,
-    borderRadius: 14,
-    backgroundColor: "#fce2dc"
+    padding: theme.spacing.md
   },
-  errorText: {
-    color: "#7b2c1f"
-  },
-  primaryButton: {
-    alignItems: "center",
-    paddingVertical: 14,
-    borderRadius: 18,
-    backgroundColor: "#ffcb77"
-  },
-  primaryButtonText: {
-    color: "#172220",
-    fontWeight: "800"
-  },
-  secondaryButton: {
-    alignItems: "center",
-    paddingVertical: 14,
-    borderRadius: 18,
-    backgroundColor: "#d6e4df"
-  },
-  secondaryButtonText: {
-    color: "#173331",
-    fontWeight: "800"
+  actionRow: {
+    gap: theme.spacing.sm
   },
   rowCard: {
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: 16,
-    paddingVertical: 8
+    alignItems: "flex-start",
+    gap: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border.subtle
+  },
+  rowCopy: {
+    flex: 1,
+    gap: theme.spacing.xxs
   },
   rowTitle: {
-    color: "#1a2423",
-    fontSize: 16,
-    fontWeight: "700"
-  },
-  rowMeta: {
-    color: "#5f6c6a",
-    fontSize: 13,
-    marginTop: 4
+    fontWeight: theme.type.weight.semibold
   },
   netAmount: {
-    color: "#173331",
-    fontSize: 15,
-    fontWeight: "800"
+    fontWeight: theme.type.weight.bold
   },
-  netPositive: {
-    color: "#0d6b4d"
+  expenseMeta: {
+    alignItems: "flex-end",
+    gap: theme.spacing.sm
   },
-  netNegative: {
-    color: "#8f2f1d"
+  expenseActions: {
+    flexDirection: "row",
+    gap: theme.spacing.xs
   }
 });

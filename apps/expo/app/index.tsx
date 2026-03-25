@@ -2,12 +2,13 @@ import { Redirect } from "expo-router";
 import { View } from "react-native";
 
 import { useSession } from "../src/providers/session-provider";
+import { theme } from "../src/ui/theme";
 
 export default function IndexScreen() {
   const { isAuthenticated, isLoading } = useSession();
 
   if (isLoading) {
-    return <View style={{ flex: 1, backgroundColor: "#f6f1e8" }} />;
+    return <View style={{ flex: 1, backgroundColor: theme.colors.background.canvas }} />;
   }
 
   if (isAuthenticated) {

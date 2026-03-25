@@ -16,7 +16,15 @@ type SessionContextValue = {
   signOut: () => Promise<void>;
 };
 
-const SessionContext = createContext<SessionContextValue | null>(null);
+const SESSION_CONTEXT_KEY = "__splittrip_session_context__";
+const sessionContextStore = globalThis as typeof globalThis & {
+  [SESSION_CONTEXT_KEY]?: ReturnType<typeof createContext<SessionContextValue | null>>;
+};
+
+const SessionContext =
+  sessionContextStore[SESSION_CONTEXT_KEY] ?? createContext<SessionContextValue | null>(null);
+
+sessionContextStore[SESSION_CONTEXT_KEY] = SessionContext;
 
 export function SessionProvider({ children }: PropsWithChildren) {
   const [isLoading, setIsLoading] = useState(true);
@@ -70,7 +78,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
 
         const supabase = createSupabaseClient();
         const redirectTo = makeRedirectUri({
-          scheme: "splitsy",
+          scheme: "splittrip",
           path: "auth/callback"
         });
         const { data, error } = await supabase.auth.signInWithOAuth({

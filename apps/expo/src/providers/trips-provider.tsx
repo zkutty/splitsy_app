@@ -15,9 +15,19 @@ type TripsContextValue = {
   getTripById: (tripId: string) => Trip | undefined;
   getExpensesForTrip: (tripId: string) => Expense[];
   addExpense: (tripId: string, draft: AddExpenseInput) => Promise<void>;
+  updateExpense: (expenseId: string, tripId: string, draft: AddExpenseInput) => Promise<void>;
+  deleteExpense: (expenseId: string) => Promise<void>;
 };
 
-const TripsContext = createContext<TripsContextValue | null>(null);
+const TRIPS_CONTEXT_KEY = "__splittrip_trips_context__";
+const tripsContextStore = globalThis as typeof globalThis & {
+  [TRIPS_CONTEXT_KEY]?: ReturnType<typeof createContext<TripsContextValue | null>>;
+};
+
+const TripsContext =
+  tripsContextStore[TRIPS_CONTEXT_KEY] ?? createContext<TripsContextValue | null>(null);
+
+tripsContextStore[TRIPS_CONTEXT_KEY] = TripsContext;
 
 export function TripsProvider({ children }: PropsWithChildren) {
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -109,6 +119,14 @@ export function TripsProvider({ children }: PropsWithChildren) {
       addExpense: async (tripId, draft) => {
         const expense = await repository.createExpense(tripId, draft);
         setExpenses((current) => [expense, ...current]);
+      },
+      updateExpense: async (expenseId, tripId, draft) => {
+        const expense = await repository.updateExpense(expenseId, tripId, draft);
+        setExpenses((current) => current.map((item) => (item.id === expenseId ? expense : item)));
+      },
+      deleteExpense: async (expenseId) => {
+        await repository.deleteExpense(expenseId);
+        setExpenses((current) => current.filter((item) => item.id !== expenseId));
       }
     }),
     [currentUser, expenses, isLoading, repository, session.authMode, session.signOut, trips]

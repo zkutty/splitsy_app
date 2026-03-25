@@ -1,160 +1,257 @@
 import { Link } from "expo-router";
 import { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 
+import { MAJOR_CURRENCIES } from "../src/lib/rates";
 import { useTrips } from "../src/providers/trips-provider";
+import { AppScreen } from "../src/ui/layout/AppScreen";
+import { AppButton } from "../src/ui/primitives/AppButton";
+import { AppInput } from "../src/ui/primitives/AppInput";
+import { AppText } from "../src/ui/primitives/AppText";
+import { Chip } from "../src/ui/primitives/Chip";
+import { SurfaceCard } from "../src/ui/primitives/SurfaceCard";
+import { theme } from "../src/ui/theme";
 
 export default function TripsScreen() {
   const { trips, signOut, authMode, isLoading, createTrip } = useTrips();
   const [name, setName] = useState("");
   const [destination, setDestination] = useState("");
-  const [tripCurrencyCode, setTripCurrencyCode] = useState("EUR");
+  const [tripCurrencyCode, setTripCurrencyCode] = useState("USD");
+  const [isCreatingTrip, setIsCreatingTrip] = useState(false);
+  const [createTripError, setCreateTripError] = useState<string | null>(null);
+  const { width } = useWindowDimensions();
+  const wide = width >= 960;
+
+  const getErrorMessage = (error: unknown) => {
+    if (error instanceof Error) {
+      return error.message;
+    }
+
+    if (error && typeof error === "object" && "message" in error && typeof error.message === "string") {
+      return error.message;
+    }
+
+    return "Unable to create trip.";
+  };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.kicker}>Workspace</Text>
-          <Text style={styles.title}>Trips</Text>
-          <Text style={styles.subtitle}>
+    <AppScreen>
+      <View style={[styles.header, wide ? styles.headerWide : null]}>
+        <View style={styles.headerCopy}>
+          <AppText variant="meta" color="secondary">
+            Workspace
+          </AppText>
+          <AppText variant="title">Trips</AppText>
+          <AppText variant="bodySm" color="muted">
             {authMode === "supabase" ? "Persisted via Supabase" : "Running on demo fixtures until env is configured"}
-          </Text>
+          </AppText>
         </View>
-        <Pressable onPress={signOut} style={styles.ghostButton}>
-          <Text style={styles.ghostButtonText}>Sign out</Text>
-        </Pressable>
+        <AppButton onPress={signOut} variant="secondary" fullWidth={!wide} style={wide ? styles.signOutButton : undefined}>
+          Sign out
+        </AppButton>
       </View>
 
-      <View style={styles.createCard}>
-        <Text style={styles.createTitle}>New trip</Text>
-        <TextInput value={name} onChangeText={setName} placeholder="Trip name" style={styles.input} />
-        <TextInput
-          value={destination}
-          onChangeText={setDestination}
-          placeholder="Destination"
-          style={styles.input}
-        />
-        <TextInput
-          value={tripCurrencyCode}
-          onChangeText={setTripCurrencyCode}
-          placeholder="Trip currency"
-          autoCapitalize="characters"
-          style={styles.input}
-        />
-        <Pressable
-          onPress={() =>
-            createTrip({
-              name: name.trim() || "Untitled trip",
-              destination: destination.trim() || undefined,
-              tripCurrencyCode: tripCurrencyCode.trim().toUpperCase() || "EUR"
-            }).then(() => {
-              setName("");
-              setDestination("");
-              setTripCurrencyCode("EUR");
-            })
-          }
-          style={styles.primaryButton}
-        >
-          <Text style={styles.primaryButtonText}>Create trip</Text>
-        </Pressable>
+      <View style={[styles.topGrid, wide ? styles.topGridWide : null]}>
+        <SurfaceCard style={styles.createCard}>
+          <AppText variant="sectionTitle">Start a trip</AppText>
+          <AppText variant="bodySm" color="muted">
+            Invite friends, track shared costs, and keep balances consistent across currencies.
+          </AppText>
+          <AppInput label="Trip name" value={name} onChangeText={setName} placeholder="Summer in Lisbon" />
+          <AppInput label="Destination" value={destination} onChangeText={setDestination} placeholder="Lisbon" />
+          <View style={styles.selectorGroup}>
+            <AppText variant="meta" color="muted">
+              Trip currency
+            </AppText>
+            <View style={styles.selectorWrap}>
+              {MAJOR_CURRENCIES.map((currency) => (
+                <Chip
+                  key={currency.code}
+                  label={currency.code}
+                  selected={tripCurrencyCode === currency.code}
+                  onPress={() => setTripCurrencyCode(currency.code)}
+                />
+              ))}
+            </View>
+            <AppText variant="bodySm" color="muted">
+              Use the settlement currency for the trip.
+            </AppText>
+          </View>
+          {createTripError ? (
+            <AppText variant="bodySm" color="danger">
+              {createTripError}
+            </AppText>
+          ) : null}
+          <AppButton
+            onPress={async () => {
+              try {
+                setIsCreatingTrip(true);
+                setCreateTripError(null);
+                await createTrip({
+                  name: name.trim() || "Untitled trip",
+                  destination: destination.trim() || undefined,
+                  tripCurrencyCode: tripCurrencyCode.trim().toUpperCase() || "USD"
+                });
+                setName("");
+                setDestination("");
+                setTripCurrencyCode("USD");
+              } catch (error) {
+                console.error("Create trip failed", error);
+                setCreateTripError(getErrorMessage(error));
+              } finally {
+                setIsCreatingTrip(false);
+              }
+            }}
+            disabled={isCreatingTrip}
+          >
+            {isCreatingTrip ? "Creating..." : "Create trip"}
+          </AppButton>
+        </SurfaceCard>
+
+        <SurfaceCard tone="muted" style={styles.summaryCard}>
+          <AppText variant="eyebrow" color="secondary">
+            SplitTrip
+          </AppText>
+          <AppText variant="sectionTitle">Split travel expenses without the math.</AppText>
+          <AppText variant="bodySm" color="secondary">
+            Keep receipts, balances, and settlements in one place instead of a shared spreadsheet.
+          </AppText>
+          <View style={styles.statRow}>
+            <View style={styles.statCard}>
+              <AppText variant="meta" color="muted">
+                Trips
+              </AppText>
+              <AppText variant="sectionTitle">{trips.length}</AppText>
+            </View>
+            <View style={styles.statCard}>
+              <AppText variant="meta" color="muted">
+                Mode
+              </AppText>
+              <AppText variant="sectionTitle">{authMode === "supabase" ? "Cloud" : "Demo"}</AppText>
+            </View>
+          </View>
+        </SurfaceCard>
       </View>
 
-      {isLoading ? <Text style={styles.tripMeta}>Loading trips…</Text> : null}
+      {isLoading ? (
+        <SurfaceCard>
+          <AppText variant="bodySm" color="muted">
+            Loading trips...
+          </AppText>
+        </SurfaceCard>
+      ) : null}
 
-      {trips.map((trip) => (
-        <Link href={{ pathname: "/trip/[tripId]", params: { tripId: trip.id } }} key={trip.id} asChild>
-          <Pressable style={styles.tripCard}>
-            <Text style={styles.tripTitle}>{trip.name}</Text>
-            <Text style={styles.tripMeta}>
-              {trip.destination ?? "No destination"} · {trip.tripCurrencyCode}
-            </Text>
-            <Text style={styles.tripMeta}>{trip.members.length} members</Text>
-          </Pressable>
-        </Link>
-      ))}
-    </ScrollView>
+      {!isLoading && trips.length === 0 ? (
+        <SurfaceCard style={styles.emptyState}>
+          <AppText variant="sectionTitle">Your first trip starts here.</AppText>
+          <AppText variant="bodySm" color="muted">
+            Create a trip, invite your group, and let SplitTrip handle the settlement math at the end.
+          </AppText>
+        </SurfaceCard>
+      ) : null}
+
+      <View style={styles.tripList}>
+        {trips.map((trip) => (
+          <Link href={{ pathname: "/trip/[tripId]", params: { tripId: trip.id } }} key={trip.id} asChild>
+            <Pressable style={styles.linkWrapper}>
+              <SurfaceCard style={styles.tripCard}>
+                <View style={styles.tripHeader}>
+                  <View style={styles.tripBadge}>
+                    <AppText variant="meta" color="inverse">
+                      Trip
+                    </AppText>
+                  </View>
+                  <AppText variant="bodySm" color="muted">
+                    {trip.tripCurrencyCode}
+                  </AppText>
+                </View>
+                <AppText variant="sectionTitle">{trip.name}</AppText>
+                <AppText variant="bodySm" color="secondary">
+                  {trip.destination ?? "Destination coming soon"}
+                </AppText>
+                <AppText variant="bodySm" color="muted">
+                  {trip.members.length} members
+                </AppText>
+              </SurfaceCard>
+            </Pressable>
+          </Link>
+        ))}
+      </View>
+    </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    gap: 16,
-    padding: 20
-  },
   header: {
+    gap: theme.spacing.md
+  },
+  headerWide: {
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: 16,
-    alignItems: "flex-start"
+    alignItems: "flex-end"
   },
-  kicker: {
-    color: "#96613d",
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 1.4
+  headerCopy: {
+    gap: theme.spacing.xs
   },
-  title: {
-    color: "#14201f",
-    fontSize: 30,
-    fontWeight: "800"
+  signOutButton: {
+    minWidth: 120
   },
-  subtitle: {
-    color: "#4f5e5c",
-    fontSize: 14,
-    marginTop: 4
+  topGrid: {
+    gap: theme.spacing.md
   },
-  ghostButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: "#d6e4df"
-  },
-  ghostButtonText: {
-    color: "#173331",
-    fontWeight: "700"
-  },
-  tripCard: {
-    gap: 6,
-    padding: 18,
-    borderRadius: 22,
-    backgroundColor: "#fff9ef"
+  topGridWide: {
+    flexDirection: "row"
   },
   createCard: {
-    gap: 10,
-    padding: 18,
-    borderRadius: 22,
-    backgroundColor: "#fff9ef"
+    flex: 1,
+    gap: theme.spacing.md
   },
-  createTitle: {
-    color: "#14201f",
-    fontSize: 20,
-    fontWeight: "700"
+  summaryCard: {
+    flex: 1,
+    gap: theme.spacing.md
   },
-  tripTitle: {
-    color: "#14201f",
-    fontSize: 20,
-    fontWeight: "700"
+  selectorGroup: {
+    gap: theme.spacing.sm
   },
-  tripMeta: {
-    color: "#5d6765",
-    fontSize: 14
+  selectorWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: theme.spacing.sm
   },
-  input: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 16,
-    backgroundColor: "#f3ecdf",
-    color: "#1f2d2b"
+  statRow: {
+    flexDirection: "row",
+    gap: theme.spacing.md
   },
-  primaryButton: {
-    alignItems: "center",
-    paddingVertical: 14,
-    borderRadius: 18,
-    backgroundColor: "#ffcb77"
+  statCard: {
+    flex: 1,
+    gap: theme.spacing.xs,
+    padding: theme.spacing.md,
+    borderRadius: theme.radius.lg,
+    backgroundColor: theme.colors.surface.base,
+    borderWidth: 1,
+    borderColor: theme.colors.border.subtle
   },
-  primaryButtonText: {
-    color: "#172220",
-    fontWeight: "800"
+  emptyState: {
+    gap: theme.spacing.sm
+  },
+  tripList: {
+    gap: theme.spacing.md
+  },
+  linkWrapper: {
+    borderRadius: theme.radius.xl
+  },
+  tripCard: {
+    gap: theme.spacing.sm
+  },
+  tripHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center"
+  },
+  tripBadge: {
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.accent.primary
   }
 });

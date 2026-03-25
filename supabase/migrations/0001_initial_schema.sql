@@ -59,6 +59,36 @@ alter table public.trip_members enable row level security;
 alter table public.expenses enable row level security;
 alter table public.expense_participants enable row level security;
 
+create or replace function public.is_trip_owner(target_trip_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.trips
+    where id = target_trip_id
+      and owner_user_id = auth.uid()
+  );
+$$;
+
+create or replace function public.is_trip_member(target_trip_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.trip_members
+    where trip_id = target_trip_id
+      and user_id = auth.uid()
+  );
+$$;
+
 create policy "users_can_read_their_profile"
 on public.users
 for select
@@ -75,17 +105,18 @@ for update
 using (auth.uid() = id)
 with check (auth.uid() = id);
 
+drop policy if exists "users_manage_owned_or_joined_trips" on public.trips;
+drop policy if exists "trip_members_can_read_memberships" on public.trip_members;
+drop policy if exists "trip_owners_manage_memberships" on public.trip_members;
+drop policy if exists "trip_members_manage_expenses" on public.expenses;
+drop policy if exists "trip_members_manage_expense_participants" on public.expense_participants;
+
 create policy "users_manage_owned_or_joined_trips"
 on public.trips
 for all
 using (
   owner_user_id = auth.uid()
-  or exists (
-    select 1
-    from public.trip_members
-    where trip_members.trip_id = trips.id
-      and trip_members.user_id = auth.uid()
-  )
+  or public.is_trip_member(id)
 )
 with check (owner_user_id = auth.uid());
 
@@ -93,60 +124,30 @@ create policy "trip_members_can_read_memberships"
 on public.trip_members
 for select
 using (
-  exists (
-    select 1
-    from public.trips
-    where trips.id = trip_members.trip_id
-      and (
-        trips.owner_user_id = auth.uid()
-        or exists (
-          select 1
-          from public.trip_members as tm
-          where tm.trip_id = trip_members.trip_id
-            and tm.user_id = auth.uid()
-        )
-      )
-  )
+  public.is_trip_owner(trip_id)
+  or public.is_trip_member(trip_id)
 );
 
 create policy "trip_owners_manage_memberships"
 on public.trip_members
 for all
 using (
-  exists (
-    select 1
-    from public.trips
-    where trips.id = trip_members.trip_id
-      and trips.owner_user_id = auth.uid()
-  )
+  public.is_trip_owner(trip_id)
 )
 with check (
-  exists (
-    select 1
-    from public.trips
-    where trips.id = trip_members.trip_id
-      and trips.owner_user_id = auth.uid()
-  )
+  public.is_trip_owner(trip_id)
 );
 
 create policy "trip_members_manage_expenses"
 on public.expenses
 for all
 using (
-  exists (
-    select 1
-    from public.trip_members
-    where trip_members.trip_id = expenses.trip_id
-      and trip_members.user_id = auth.uid()
-  )
+  public.is_trip_owner(trip_id)
+  or public.is_trip_member(trip_id)
 )
 with check (
-  exists (
-    select 1
-    from public.trip_members
-    where trip_members.trip_id = expenses.trip_id
-      and trip_members.user_id = auth.uid()
-  )
+  public.is_trip_owner(trip_id)
+  or public.is_trip_member(trip_id)
 );
 
 create policy "trip_members_manage_expense_participants"
@@ -156,17 +157,21 @@ using (
   exists (
     select 1
     from public.expenses
-    join public.trip_members on trip_members.trip_id = expenses.trip_id
     where expenses.id = expense_participants.expense_id
-      and trip_members.user_id = auth.uid()
+      and (
+        public.is_trip_owner(expenses.trip_id)
+        or public.is_trip_member(expenses.trip_id)
+      )
   )
 )
 with check (
   exists (
     select 1
     from public.expenses
-    join public.trip_members on trip_members.trip_id = expenses.trip_id
     where expenses.id = expense_participants.expense_id
-      and trip_members.user_id = auth.uid()
+      and (
+        public.is_trip_owner(expenses.trip_id)
+        or public.is_trip_member(expenses.trip_id)
+      )
   )
 );

@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Splitsy",
-    "slug": "splitsy",
-    "scheme": "splitsy",
+    "name": "SplitTrip",
+    "slug": "splittrip",
+    "scheme": "splittrip",
     "platforms": [
       "ios",
       "android",
@@ -16,7 +16,8 @@
     },
     "web": {
       "bundler": "metro",
-      "output": "static"
+      "output": "static",
+      "favicon": "./assets/logo/favicon.svg"
     },
     "extra": {
       "eas": {
@@ -25,4 +26,3 @@
     }
   }
 }
-
