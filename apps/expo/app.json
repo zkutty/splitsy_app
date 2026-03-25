@@ -16,8 +16,7 @@
     },
     "web": {
       "bundler": "metro",
-      "output": "static",
-      "favicon": "./assets/logo/favicon.svg"
+      "output": "single"
     },
     "extra": {
       "eas": {
