@@ -6,7 +6,7 @@ import { Theme, useAppTheme } from "../theme";
 
 type AppButtonProps = PropsWithChildren<{
   onPress?: () => void | Promise<void>;
-  variant?: "primary" | "secondary";
+  variant?: "primary" | "secondary" | "danger";
   disabled?: boolean;
   fullWidth?: boolean;
   style?: StyleProp<ViewStyle>;
@@ -37,7 +37,7 @@ export function AppButton({
         style
       ]}
     >
-      <AppText variant="bodySm" color={variant === "primary" ? "inverse" : "primary"} style={styles.label}>
+      <AppText variant="bodySm" color={variant === "secondary" ? "primary" : "inverse"} style={styles.label}>
         {children}
       </AppText>
     </Pressable>
@@ -78,6 +78,10 @@ function createStyles(theme: Theme) {
     secondary: {
       backgroundColor: theme.colors.surface.base,
       borderColor: theme.colors.border.strong
+    },
+    danger: {
+      backgroundColor: theme.colors.status.error,
+      borderColor: theme.colors.status.error
     }
   });
 }

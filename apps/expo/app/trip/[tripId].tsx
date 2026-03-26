@@ -75,6 +75,7 @@ export default function TripDetailsScreen() {
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [activeTransferId, setActiveTransferId] = useState<string | null>(null);
   const [activeMemberId, setActiveMemberId] = useState<string | null>(null);
+  const [memberPendingRemovalId, setMemberPendingRemovalId] = useState<string | null>(null);
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -116,6 +117,10 @@ export default function TripDetailsScreen() {
           selectedMembers.includes(member.id)
       ) ?? [],
     [paidByMemberId, selectedMembers, trip?.members]
+  );
+  const removedMembers = useMemo(
+    () => trip?.members.filter((member) => (member.status ?? "active") === "removed") ?? [],
+    [trip?.members]
   );
 
   useEffect(() => {
@@ -176,6 +181,30 @@ export default function TripDetailsScreen() {
       current.includes(memberId) ? current.filter((id) => id !== memberId) : [...current, memberId]
     );
   };
+
+  const getMemberStatusText = (member: (typeof trip.members)[number]) => {
+    if ((member.status ?? "active") === "removed") {
+      return member.removedAt ? `Removed on ${member.removedAt.slice(0, 10)}` : "Removed from this trip";
+    }
+
+    if (member.isLinked) {
+      return member.email ? `Linked account · ${member.email}` : "Linked account";
+    }
+
+    if (member.email) {
+      return `Invite pending · ${member.email}`;
+    }
+
+    return "Manual member";
+  };
+
+  const getMemberInitials = (displayName: string) =>
+    displayName
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? "")
+      .join("");
 
   const submitExpense = async () => {
     if (!isTripActive) {
@@ -295,6 +324,7 @@ export default function TripDetailsScreen() {
 
     try {
       await removeTripMember(trip.id, memberId);
+      setMemberPendingRemovalId(null);
     } finally {
       setActiveMemberId(null);
     }
@@ -784,41 +814,128 @@ export default function TripDetailsScreen() {
                 ) : null}
               </View>
             ) : null}
-            <View style={styles.chipWrap}>
-              {trip.members.map((member) => (
-                <View key={member.id} style={styles.memberStatusCard}>
-                  <View style={[styles.memberRow, compact ? styles.rowCardCompact : null]}>
-                    <View style={styles.rowCopy}>
-                      <Chip label={member.displayName} tone={member.isLinked ? "success" : "default"} />
-                      <AppText variant="bodySm" color="muted">
-                        {(member.status ?? "active") === "removed"
-                          ? `Removed${member.removedAt ? ` on ${member.removedAt.slice(0, 10)}` : ""}`
-                          : member.isLinked
-                            ? "Linked account"
-                            : member.email
-                              ? `Invite pending: ${member.email}`
-                              : "Manual member"}
-                      </AppText>
-                    </View>
-                    {mayManageTrip &&
-                    isTripActive &&
-                    member.id !== tripCreator?.id &&
-                    (member.status ?? "active") === "active" ? (
-                      <AppButton
-                        onPress={() => removeMemberFromTrip(member.id)}
-                        variant="secondary"
-                        fullWidth={false}
-                        disabled={activeMemberId === member.id}
-                      >
-                        {activeMemberId === member.id ? "Removing..." : "Remove"}
-                      </AppButton>
-                    ) : null}
-                  </View>
-                </View>
-              ))}
+            <View style={styles.membersGroup}>
+              <View style={styles.membersHeaderRow}>
+                <AppText variant="meta" color="muted">
+                  Current members
+                </AppText>
+                <AppText variant="bodySm" color="muted">
+                  {activeMembers.length} active
+                </AppText>
+              </View>
+              <View style={styles.memberList}>
+                {activeMembers.map((member) => {
+                  const canRemoveMember = mayManageTrip && isTripActive && member.id !== tripCreator?.id;
+                  const pendingRemoval = memberPendingRemovalId === member.id;
+
+                  return (
+                    <SurfaceCard key={member.id} style={styles.memberCard}>
+                      <View style={styles.memberIdentity}>
+                        <View
+                          style={[
+                            styles.memberAvatar,
+                            member.isLinked ? styles.memberAvatarLinked : null,
+                            member.email && !member.isLinked ? styles.memberAvatarPending : null
+                          ]}
+                        >
+                          <AppText variant="bodySm" color="inverse" style={styles.memberAvatarText}>
+                            {getMemberInitials(member.displayName)}
+                          </AppText>
+                        </View>
+                        <View style={styles.memberCopy}>
+                          <View style={styles.memberHeadline}>
+                            <AppText variant="body" color="primary" style={styles.memberName}>
+                              {member.displayName}
+                            </AppText>
+                            {member.id === tripCreator?.id ? (
+                              <AppText variant="meta" color="muted">
+                                Trip owner
+                              </AppText>
+                            ) : null}
+                          </View>
+                          <AppText variant="bodySm" color="muted">
+                            {getMemberStatusText(member)}
+                          </AppText>
+                        </View>
+                      </View>
+
+                      {canRemoveMember ? (
+                        pendingRemoval ? (
+                          <View style={styles.memberConfirm}>
+                            <AppText variant="bodySm" color="danger">
+                              Remove {member.displayName} from this trip?
+                            </AppText>
+                            <View style={[styles.memberActionRow, compact ? styles.actionRowCompact : null]}>
+                              <AppButton
+                                onPress={() => setMemberPendingRemovalId(null)}
+                                variant="secondary"
+                                fullWidth={compact}
+                              >
+                                Cancel
+                              </AppButton>
+                              <AppButton
+                                onPress={() => removeMemberFromTrip(member.id)}
+                                variant="danger"
+                                fullWidth={compact}
+                                disabled={activeMemberId === member.id}
+                              >
+                                {activeMemberId === member.id ? "Removing..." : `Remove ${member.displayName}`}
+                              </AppButton>
+                            </View>
+                          </View>
+                        ) : (
+                          <AppButton
+                            onPress={() => setMemberPendingRemovalId(member.id)}
+                            variant="secondary"
+                            fullWidth={compact}
+                          >
+                            Remove member
+                          </AppButton>
+                        )
+                      ) : null}
+                    </SurfaceCard>
+                  );
+                })}
+              </View>
             </View>
+            {removedMembers.length ? (
+              <View style={styles.membersGroup}>
+                <View style={styles.membersHeaderRow}>
+                  <AppText variant="meta" color="muted">
+                    Removed members
+                  </AppText>
+                  <AppText variant="bodySm" color="muted">
+                    {removedMembers.length} archived
+                  </AppText>
+                </View>
+                <View style={styles.memberList}>
+                  {removedMembers.map((member) => (
+                    <SurfaceCard key={member.id} tone="muted" style={styles.memberCard}>
+                      <View style={styles.memberIdentity}>
+                        <View style={[styles.memberAvatar, styles.memberAvatarRemoved]}>
+                          <AppText variant="bodySm" color="inverse" style={styles.memberAvatarText}>
+                            {getMemberInitials(member.displayName)}
+                          </AppText>
+                        </View>
+                        <View style={styles.memberCopy}>
+                          <AppText variant="body" color="secondary" style={styles.memberName}>
+                            {member.displayName}
+                          </AppText>
+                          <AppText variant="bodySm" color="muted">
+                            {getMemberStatusText(member)}
+                          </AppText>
+                        </View>
+                      </View>
+                    </SurfaceCard>
+                  ))}
+                </View>
+              </View>
+            ) : null}
             {mayManageTrip ? (
-              <>
+              <View style={styles.memberFormSection}>
+                <AppText variant="meta" color="muted">
+                  Add member manually
+                </AppText>
                 <AppInput
                   label="New member name"
                   value={memberName}
@@ -839,7 +956,7 @@ export default function TripDetailsScreen() {
                 <AppButton onPress={submitMember} variant="secondary" disabled={isAddingMember || !isTripActive}>
                   {isAddingMember ? "Adding..." : "Add member"}
                 </AppButton>
-              </>
+              </View>
             ) : null}
           </SectionCard>
         </View>
@@ -876,13 +993,63 @@ function createStyles(theme: Theme) {
     flexWrap: "wrap",
     gap: theme.spacing.sm
   },
-  memberStatusCard: {
-    gap: theme.spacing.xxs
+  membersGroup: {
+    gap: theme.spacing.sm
   },
-  memberRow: {
+  membersHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
+    gap: theme.spacing.md
+  },
+  memberList: {
+    gap: theme.spacing.sm
+  },
+  memberCard: {
+    gap: theme.spacing.md
+  },
+  memberIdentity: {
+    flexDirection: "row",
     alignItems: "flex-start",
+    gap: theme.spacing.md
+  },
+  memberAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: theme.colors.accent.primary,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  memberAvatarLinked: {
+    backgroundColor: theme.colors.accent.success
+  },
+  memberAvatarPending: {
+    backgroundColor: theme.colors.accent.warning
+  },
+  memberAvatarRemoved: {
+    backgroundColor: theme.colors.text.muted
+  },
+  memberAvatarText: {
+    fontWeight: theme.type.weight.bold
+  },
+  memberCopy: {
+    flex: 1,
+    gap: theme.spacing.xxs
+  },
+  memberHeadline: {
+    gap: theme.spacing.xxs
+  },
+  memberName: {
+    fontWeight: theme.type.weight.semibold
+  },
+  memberConfirm: {
+    gap: theme.spacing.sm
+  },
+  memberActionRow: {
+    gap: theme.spacing.sm
+  },
+  memberFormSection: {
     gap: theme.spacing.md
   },
   errorBox: {
