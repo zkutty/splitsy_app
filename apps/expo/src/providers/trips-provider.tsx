@@ -10,7 +10,13 @@ type TripsContextValue = {
   currentUser: UserProfile;
   trips: Trip[];
   signOut: () => Promise<void>;
-  createTrip: (input: { name: string; destination?: string; tripCurrencyCode: string }) => Promise<void>;
+  createTrip: (input: {
+    name: string;
+    destination?: string;
+    tripCurrencyCode: string;
+    startDate?: string;
+    endDate?: string;
+  }) => Promise<void>;
   addTripMember: (tripId: string, input: { displayName: string; email?: string }) => Promise<void>;
   getTripById: (tripId: string) => Trip | undefined;
   getCurrentMemberForTrip: (tripId: string) => Trip["members"][number] | undefined;

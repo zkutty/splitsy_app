@@ -52,6 +52,7 @@ export type Expense = {
   id: string;
   tripId: string;
   createdByUserId?: string | null;
+  expenseDate: string;
   amount: number;
   currencyCode: CurrencyCode;
   conversionRateToTripCurrency: number;
@@ -65,6 +66,7 @@ export type Expense = {
 };
 
 export type ExpenseDraft = {
+  expenseDate: string;
   amount: number;
   currencyCode: CurrencyCode;
   category: ExpenseCategoryId;

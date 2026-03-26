@@ -9,6 +9,11 @@ export type ValidationResult =
 
 export const validateExpenseDraft = (draft: ExpenseDraft): ValidationResult => {
   const errors: string[] = [];
+  const isIsoDate = /^\d{4}-\d{2}-\d{2}$/;
+
+  if (!draft.expenseDate || !isIsoDate.test(draft.expenseDate)) {
+    errors.push("Expense date must use YYYY-MM-DD.");
+  }
 
   if (!Number.isFinite(draft.amount) || draft.amount <= 0) {
     errors.push("Amount must be greater than zero.");
@@ -36,4 +41,3 @@ export const validateExpenseDraft = (draft: ExpenseDraft): ValidationResult => {
 
   return { ok: true };
 };
-

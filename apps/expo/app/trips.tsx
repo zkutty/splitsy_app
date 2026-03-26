@@ -19,6 +19,8 @@ export default function TripsScreen() {
   const [name, setName] = useState("");
   const [destination, setDestination] = useState("");
   const [tripCurrencyCode, setTripCurrencyCode] = useState("USD");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [isCreatingTrip, setIsCreatingTrip] = useState(false);
   const [createTripError, setCreateTripError] = useState<string | null>(null);
   const { width } = useWindowDimensions();
@@ -65,6 +67,20 @@ export default function TripsScreen() {
           </AppText>
           <AppInput label="Trip name" value={name} onChangeText={setName} placeholder="Summer in Lisbon" />
           <AppInput label="Destination" value={destination} onChangeText={setDestination} placeholder="Lisbon" />
+          <AppInput
+            label="Start date"
+            value={startDate}
+            onChangeText={setStartDate}
+            placeholder="2026-06-10"
+            helperText="Optional. Use YYYY-MM-DD."
+          />
+          <AppInput
+            label="End date"
+            value={endDate}
+            onChangeText={setEndDate}
+            placeholder="2026-06-17"
+            helperText="Optional. Use YYYY-MM-DD."
+          />
           <View style={styles.selectorGroup}>
             <AppText variant="meta" color="muted">
               Trip currency
@@ -96,11 +112,15 @@ export default function TripsScreen() {
                 await createTrip({
                   name: name.trim() || "Untitled trip",
                   destination: destination.trim() || undefined,
-                  tripCurrencyCode: tripCurrencyCode.trim().toUpperCase() || "USD"
+                  tripCurrencyCode: tripCurrencyCode.trim().toUpperCase() || "USD",
+                  startDate: startDate.trim() || undefined,
+                  endDate: endDate.trim() || undefined
                 });
                 setName("");
                 setDestination("");
                 setTripCurrencyCode("USD");
+                setStartDate("");
+                setEndDate("");
               } catch (error) {
                 console.error("Create trip failed", error);
                 setCreateTripError(getErrorMessage(error));
@@ -198,6 +218,9 @@ export default function TripsScreen() {
                 <AppText variant="sectionTitle">{trip.name}</AppText>
                 <AppText variant="bodySm" color="secondary">
                   {trip.destination ?? "Destination coming soon"}
+                </AppText>
+                <AppText variant="bodySm" color="muted">
+                  {trip.startDate ? `${trip.startDate}${trip.endDate ? ` to ${trip.endDate}` : ""}` : "Dates not set"}
                 </AppText>
                 <AppText variant="bodySm" color="muted">
                   {trip.createdByUserId === currentUser.id ? "Created by you" : "Shared with you"}

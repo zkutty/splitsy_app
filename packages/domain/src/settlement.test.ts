@@ -9,6 +9,7 @@ test("settles equal split expenses into minimized transfers", () => {
     {
       id: "1",
       tripId: "trip",
+      expenseDate: "2026-03-25",
       amount: 90,
       currencyCode: "EUR",
       conversionRateToTripCurrency: 1,
@@ -21,6 +22,7 @@ test("settles equal split expenses into minimized transfers", () => {
     {
       id: "2",
       tripId: "trip",
+      expenseDate: "2026-03-25",
       amount: 60,
       currencyCode: "USD",
       conversionRateToTripCurrency: 0.9,
@@ -53,6 +55,7 @@ test("settles equal split expenses into minimized transfers", () => {
 
 test("validates required expense draft fields", () => {
   const result = validateExpenseDraft({
+    expenseDate: "",
     amount: 0,
     currencyCode: "EU",
     category: "custom",
@@ -68,5 +71,5 @@ test("validates required expense draft fields", () => {
     throw new Error("Expected validation errors");
   }
 
-  expect(result.errors.length).toBe(5);
+  expect(result.errors.length).toBe(6);
 });

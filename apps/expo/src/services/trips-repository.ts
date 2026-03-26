@@ -20,6 +20,8 @@ export type TripsRepository = {
     name: string;
     destination?: string;
     tripCurrencyCode: string;
+    startDate?: string;
+    endDate?: string;
     owner: UserProfile;
   }) => Promise<Trip>;
   addTripMember: (tripId: string, member: UserProfile) => Promise<Trip>;
@@ -39,6 +41,7 @@ const demoRepository = (): TripsRepository => {
         id: `exp_${expenses.length + 1}`,
         tripId,
         createdByUserId: SAMPLE_USER.id,
+        expenseDate: draft.expenseDate,
         amount: draft.amount,
         currencyCode: draft.currencyCode,
         conversionRateToTripCurrency: draft.conversionRateToTripCurrency,
@@ -88,8 +91,8 @@ const demoRepository = (): TripsRepository => {
         name: input.name,
         destination: input.destination ?? null,
         tripCurrencyCode: input.tripCurrencyCode,
-        startDate: null,
-        endDate: null,
+        startDate: input.startDate ?? null,
+        endDate: input.endDate ?? null,
         members: [
           {
             id: input.owner.id,
@@ -218,8 +221,9 @@ const supabaseRepository = (): TripsRepository => {
     listExpenses: async (tripId) => {
       const { data, error } = await supabase
         .from("expenses")
-        .select("id, trip_id, created_by_user_id, amount, currency_code, trip_conversion_rate, trip_amount, category, custom_category, note, paid_by_member_id, created_at, expense_participants(member_id)")
+        .select("id, trip_id, created_by_user_id, expense_date, amount, currency_code, trip_conversion_rate, trip_amount, category, custom_category, note, paid_by_member_id, created_at, expense_participants(member_id)")
         .eq("trip_id", tripId)
+        .order("expense_date", { ascending: false })
         .order("created_at", { ascending: false });
 
       if (error) {
@@ -230,6 +234,7 @@ const supabaseRepository = (): TripsRepository => {
         id: row.id,
         tripId: row.trip_id,
         createdByUserId: row.created_by_user_id,
+        expenseDate: row.expense_date,
         amount: Number(row.amount),
         currencyCode: row.currency_code,
         conversionRateToTripCurrency: Number(row.trip_conversion_rate),
@@ -249,6 +254,7 @@ const supabaseRepository = (): TripsRepository => {
         .insert({
           trip_id: tripId,
           created_by_user_id: createdByUserId,
+          expense_date: draft.expenseDate,
           amount: draft.amount,
           currency_code: draft.currencyCode,
           trip_conversion_rate: draft.conversionRateToTripCurrency,
@@ -258,7 +264,7 @@ const supabaseRepository = (): TripsRepository => {
           note: draft.note ?? null,
           paid_by_member_id: draft.paidByMemberId
         })
-        .select("id, trip_id, created_by_user_id, amount, currency_code, trip_conversion_rate, trip_amount, category, custom_category, note, paid_by_member_id, created_at")
+        .select("id, trip_id, created_by_user_id, expense_date, amount, currency_code, trip_conversion_rate, trip_amount, category, custom_category, note, paid_by_member_id, created_at")
         .single();
 
       if (expenseError) {
@@ -280,6 +286,7 @@ const supabaseRepository = (): TripsRepository => {
         id: insertedExpense.id,
         tripId: insertedExpense.trip_id,
         createdByUserId: insertedExpense.created_by_user_id,
+        expenseDate: insertedExpense.expense_date,
         amount: Number(insertedExpense.amount),
         currencyCode: insertedExpense.currency_code,
         conversionRateToTripCurrency: Number(insertedExpense.trip_conversion_rate),
@@ -296,6 +303,7 @@ const supabaseRepository = (): TripsRepository => {
       const { data: updatedExpense, error: expenseError } = await supabase
         .from("expenses")
         .update({
+          expense_date: draft.expenseDate,
           amount: draft.amount,
           currency_code: draft.currencyCode,
           trip_conversion_rate: draft.conversionRateToTripCurrency,
@@ -307,7 +315,7 @@ const supabaseRepository = (): TripsRepository => {
         })
         .eq("id", expenseId)
         .eq("trip_id", tripId)
-        .select("id, trip_id, created_by_user_id, amount, currency_code, trip_conversion_rate, trip_amount, category, custom_category, note, paid_by_member_id, created_at")
+        .select("id, trip_id, created_by_user_id, expense_date, amount, currency_code, trip_conversion_rate, trip_amount, category, custom_category, note, paid_by_member_id, created_at")
         .single();
 
       if (expenseError) {
@@ -338,6 +346,7 @@ const supabaseRepository = (): TripsRepository => {
         id: updatedExpense.id,
         tripId: updatedExpense.trip_id,
         createdByUserId: updatedExpense.created_by_user_id,
+        expenseDate: updatedExpense.expense_date,
         amount: Number(updatedExpense.amount),
         currencyCode: updatedExpense.currency_code,
         conversionRateToTripCurrency: Number(updatedExpense.trip_conversion_rate),
@@ -381,7 +390,9 @@ const supabaseRepository = (): TripsRepository => {
           created_by_user_id: input.owner.id,
           name: input.name,
           destination: input.destination ?? null,
-          trip_currency_code: input.tripCurrencyCode
+          trip_currency_code: input.tripCurrencyCode,
+          start_date: input.startDate ?? null,
+          end_date: input.endDate ?? null
         })
         .select("id, created_by_user_id, name, destination, trip_currency_code, start_date, end_date")
         .single();

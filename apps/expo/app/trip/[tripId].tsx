@@ -39,6 +39,7 @@ export default function TripDetailsScreen() {
   const wide = width >= 1040;
 
   const [amount, setAmount] = useState("");
+  const [expenseDate, setExpenseDate] = useState(new Date().toISOString().slice(0, 10));
   const [currencyCode, setCurrencyCode] = useState(trip?.tripCurrencyCode ?? "USD");
   const [category, setCategory] = useState(PRESET_CATEGORIES[0].id);
   const [customCategory, setCustomCategory] = useState("");
@@ -71,6 +72,12 @@ export default function TripDetailsScreen() {
       setCurrencyCode(trip.tripCurrencyCode);
     }
   }, [trip?.id, trip?.tripCurrencyCode]);
+
+  useEffect(() => {
+    if (!editingExpenseId) {
+      setExpenseDate(new Date().toISOString().slice(0, 10));
+    }
+  }, [editingExpenseId]);
 
   const settlement = useMemo(() => {
     if (!trip) {
@@ -115,6 +122,7 @@ export default function TripDetailsScreen() {
   const submitExpense = async () => {
     const numericAmount = Number(amount);
     const draft = {
+      expenseDate,
       amount: numericAmount,
       currencyCode: currencyCode.toUpperCase(),
       category,
@@ -164,6 +172,7 @@ export default function TripDetailsScreen() {
 
     setEditingExpenseId(expense.id);
     setAmount(String(expense.amount));
+    setExpenseDate(expense.expenseDate);
     setCurrencyCode(expense.currencyCode);
     setCategory(expense.category);
     setCustomCategory(expense.customCategory ?? "");
@@ -176,6 +185,7 @@ export default function TripDetailsScreen() {
   const cancelEditingExpense = () => {
     setEditingExpenseId(null);
     setAmount("");
+    setExpenseDate(new Date().toISOString().slice(0, 10));
     setCurrencyCode(trip.tripCurrencyCode);
     setCategory(PRESET_CATEGORIES[0].id);
     setCustomCategory("");
@@ -232,6 +242,9 @@ export default function TripDetailsScreen() {
               {trip.destination ?? "No destination"} · settle in {trip.tripCurrencyCode}
             </AppText>
             <AppText variant="bodySm" color="accent">
+              {trip.startDate ? `${trip.startDate}${trip.endDate ? ` to ${trip.endDate}` : ""}` : "Dates not set"}
+            </AppText>
+            <AppText variant="bodySm" color="accent">
               {tripCreator ? `Created by ${tripCreator.displayName}` : "Creator metadata unavailable"} ·{" "}
               {currentMember ? `Signed in as ${currentMember.displayName}` : "You are viewing this trip as a guest member"}
             </AppText>
@@ -254,6 +267,13 @@ export default function TripDetailsScreen() {
               onChangeText={setAmount}
               placeholder="48.00"
               keyboardType="decimal-pad"
+            />
+            <AppInput
+              label="Expense date"
+              value={expenseDate}
+              onChangeText={setExpenseDate}
+              placeholder="2026-06-10"
+              helperText="Use YYYY-MM-DD."
             />
             <View style={styles.group}>
               <AppText variant="meta" color="muted">
@@ -372,6 +392,9 @@ export default function TripDetailsScreen() {
                     <AppText variant="bodySm" color="muted">
                       {formatCurrency(expense.amount, expense.currencyCode)} {"->"}{" "}
                       {formatCurrency(expense.tripAmount, trip.tripCurrencyCode)}
+                    </AppText>
+                    <AppText variant="bodySm" color="muted">
+                      On {expense.expenseDate}
                     </AppText>
                     <AppText variant="bodySm" color="muted">
                       Added by{" "}
