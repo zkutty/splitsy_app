@@ -13,7 +13,7 @@ import { SurfaceCard } from "../src/ui/primitives/SurfaceCard";
 import { theme } from "../src/ui/theme";
 
 export default function TripsScreen() {
-  const { trips, signOut, authMode, isLoading, createTrip } = useTrips();
+  const { trips, signOut, authMode, currentUser, isLoading, createTrip } = useTrips();
   const [name, setName] = useState("");
   const [destination, setDestination] = useState("");
   const [tripCurrencyCode, setTripCurrencyCode] = useState("USD");
@@ -116,6 +116,30 @@ export default function TripsScreen() {
           <AppText variant="bodySm" color="secondary">
             Keep receipts, balances, and settlements in one place instead of a shared spreadsheet.
           </AppText>
+          <View style={styles.identityCard}>
+            <View style={styles.identityCopy}>
+              <AppText variant="meta" color="muted">
+                Signed in as
+              </AppText>
+              <AppText variant="bodySm" color="secondary" style={styles.identityName}>
+                {currentUser.displayName || "Traveler"}
+              </AppText>
+              {currentUser.email ? (
+                <AppText variant="bodySm" color="muted">
+                  {currentUser.email}
+                </AppText>
+              ) : (
+                <AppText variant="bodySm" color="muted">
+                  Demo workspace
+                </AppText>
+              )}
+            </View>
+            <View style={styles.identityAvatar}>
+              <AppText variant="bodySm" color="inverse" style={styles.identityAvatarText}>
+                {(currentUser.displayName || "T").slice(0, 1).toUpperCase()}
+              </AppText>
+            </View>
+          </View>
           <View style={styles.statRow}>
             <View style={styles.statCard}>
               <AppText variant="meta" color="muted">
@@ -209,6 +233,35 @@ const styles = StyleSheet.create({
   summaryCard: {
     flex: 1,
     gap: theme.spacing.md
+  },
+  identityCard: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: theme.spacing.md,
+    padding: theme.spacing.md,
+    borderRadius: theme.radius.lg,
+    backgroundColor: theme.colors.surface.base,
+    borderWidth: 1,
+    borderColor: theme.colors.border.subtle
+  },
+  identityCopy: {
+    flex: 1,
+    gap: theme.spacing.xxs
+  },
+  identityName: {
+    fontWeight: theme.type.weight.semibold
+  },
+  identityAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: theme.colors.accent.primary,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  identityAvatarText: {
+    fontWeight: theme.type.weight.bold
   },
   selectorGroup: {
     gap: theme.spacing.sm
