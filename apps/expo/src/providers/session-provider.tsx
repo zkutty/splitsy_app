@@ -2,10 +2,22 @@ import { makeRedirectUri } from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
 import { Session, User } from "@supabase/supabase-js";
 import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useState } from "react";
+import { Platform } from "react-native";
 
 import { createSupabaseClient, hasSupabaseConfig } from "../services/supabase";
 
 WebBrowser.maybeCompleteAuthSession();
+
+function getRedirectUrl() {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    return `${window.location.origin}/auth/callback`;
+  }
+
+  return makeRedirectUri({
+    scheme: "splittrip",
+    path: "auth/callback"
+  });
+}
 
 type SessionContextValue = {
   authMode: "supabase" | "demo";
@@ -77,10 +89,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
         }
 
         const supabase = createSupabaseClient();
-        const redirectTo = makeRedirectUri({
-          scheme: "splittrip",
-          path: "auth/callback"
-        });
+        const redirectTo = getRedirectUrl();
         const { data, error } = await supabase.auth.signInWithOAuth({
           provider: "google",
           options: {
