@@ -44,18 +44,21 @@ export function TripsProvider({ children }: PropsWithChildren) {
       return;
     }
 
-    const currentUser: UserProfile = session.user
-      ? {
-          id: session.user.id,
-          email: session.user.email,
-          displayName:
-            (session.user.user_metadata?.name as string | undefined) ??
-            (session.user.user_metadata?.full_name as string | undefined) ??
-            session.user.email ??
-            "Traveler",
-          avatarUrl: (session.user.user_metadata?.avatar_url as string | undefined) ?? null
-        }
-      : demoOwnerProfile;
+    if (!session.user) {
+      setIsLoading(false);
+      return;
+    }
+
+    const currentUser: UserProfile = {
+      id: session.user.id,
+      email: session.user.email,
+      displayName:
+        (session.user.user_metadata?.name as string | undefined) ??
+        (session.user.user_metadata?.full_name as string | undefined) ??
+        session.user.email ??
+        "Traveler",
+      avatarUrl: (session.user.user_metadata?.avatar_url as string | undefined) ?? null
+    };
 
     const load = async () => {
       setIsLoading(true);
@@ -75,18 +78,26 @@ export function TripsProvider({ children }: PropsWithChildren) {
     });
   }, [repository, session.isAuthenticated, session.isLoading, session.user]);
 
-  const currentUser: UserProfile = session.user
-    ? {
-        id: session.user.id,
-        email: session.user.email,
-        displayName:
-          (session.user.user_metadata?.name as string | undefined) ??
-          (session.user.user_metadata?.full_name as string | undefined) ??
-          session.user.email ??
-          "Traveler",
-        avatarUrl: (session.user.user_metadata?.avatar_url as string | undefined) ?? null
-      }
-    : demoOwnerProfile;
+  const currentUser: UserProfile =
+    session.authMode === "demo"
+      ? demoOwnerProfile
+      : session.user
+        ? {
+            id: session.user.id,
+            email: session.user.email,
+            displayName:
+              (session.user.user_metadata?.name as string | undefined) ??
+              (session.user.user_metadata?.full_name as string | undefined) ??
+              session.user.email ??
+              "Traveler",
+            avatarUrl: (session.user.user_metadata?.avatar_url as string | undefined) ?? null
+          }
+        : {
+            id: "",
+            email: null,
+            displayName: "",
+            avatarUrl: null
+          };
 
   const value = useMemo<TripsContextValue>(
     () => ({
@@ -96,6 +107,10 @@ export function TripsProvider({ children }: PropsWithChildren) {
       trips,
       signOut: session.signOut,
       createTrip: async (input) => {
+        if (session.authMode === "supabase" && !session.user) {
+          throw new Error("Your session is still loading. Refresh and try again.");
+        }
+
         const trip = await repository.createTrip({
           ...input,
           owner: currentUser
@@ -104,6 +119,10 @@ export function TripsProvider({ children }: PropsWithChildren) {
         setTrips((current) => [trip, ...current]);
       },
       addTripMember: async (tripId, input) => {
+        if (session.authMode === "supabase" && !session.user) {
+          throw new Error("Your session is still loading. Refresh and try again.");
+        }
+
         const memberProfile: UserProfile = {
           id: input.email?.trim().toLowerCase() || `member_${Date.now()}`,
           email: input.email?.trim().toLowerCase() || null,
