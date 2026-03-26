@@ -40,6 +40,7 @@ export default function TripDetailsScreen() {
     updateExpense,
     deleteExpense,
     addTripMember,
+    removeTripMember,
     isLoading
   } = useTrips();
   const { theme } = useAppTheme();
@@ -73,21 +74,8 @@ export default function TripDetailsScreen() {
   const [inviteFeedback, setInviteFeedback] = useState<string | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [activeTransferId, setActiveTransferId] = useState<string | null>(null);
+  const [activeMemberId, setActiveMemberId] = useState<string | null>(null);
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!trip) {
-      return;
-    }
-
-    if (!paidByMemberId && trip.members[0]) {
-      setPaidByMemberId(trip.members[0].id);
-    }
-
-    if (selectedMembers.length === 0) {
-      setSelectedMembers(trip.members.map((member) => member.id));
-    }
-  }, [paidByMemberId, selectedMembers.length, trip]);
 
   useEffect(() => {
     if (trip) {
@@ -115,6 +103,49 @@ export default function TripDetailsScreen() {
 
   const tripCreator = trip?.members.find((member) => member.userId === trip.createdByUserId);
   const isTripActive = trip?.status === "active";
+  const activeMembers = useMemo(
+    () => trip?.members.filter((member) => (member.status ?? "active") === "active") ?? [],
+    [trip?.members]
+  );
+  const expenseFormMembers = useMemo(
+    () =>
+      trip?.members.filter(
+        (member) =>
+          (member.status ?? "active") === "active" ||
+          member.id === paidByMemberId ||
+          selectedMembers.includes(member.id)
+      ) ?? [],
+    [paidByMemberId, selectedMembers, trip?.members]
+  );
+
+  useEffect(() => {
+    if (!trip) {
+      return;
+    }
+
+    if (!paidByMemberId && activeMembers[0]) {
+      setPaidByMemberId(activeMembers[0].id);
+    }
+
+    if (selectedMembers.length === 0) {
+      setSelectedMembers(activeMembers.map((member) => member.id));
+    }
+  }, [activeMembers, paidByMemberId, selectedMembers.length, trip]);
+
+  useEffect(() => {
+    if (!activeMembers.length) {
+      return;
+    }
+
+    if (!activeMembers.some((member) => member.id === paidByMemberId)) {
+      setPaidByMemberId(activeMembers[0].id);
+    }
+
+    setSelectedMembers((current) => {
+      const filtered = current.filter((memberId) => activeMembers.some((member) => member.id === memberId));
+      return filtered.length ? filtered : activeMembers.map((member) => member.id);
+    });
+  }, [activeMembers, paidByMemberId]);
 
   if (!session.isLoading && !session.isAuthenticated) {
     return <Redirect href="/sign-in" />;
@@ -222,8 +253,8 @@ export default function TripDetailsScreen() {
     setCategory(PRESET_CATEGORIES[0].id);
     setCustomCategory("");
     setNote("");
-    setPaidByMemberId(trip.members[0]?.id ?? "");
-    setSelectedMembers(trip.members.map((member) => member.id));
+    setPaidByMemberId(activeMembers[0]?.id ?? "");
+    setSelectedMembers(activeMembers.map((member) => member.id));
     setErrors([]);
   };
 
@@ -256,6 +287,16 @@ export default function TripDetailsScreen() {
       setMemberEmail("");
     } finally {
       setIsAddingMember(false);
+    }
+  };
+
+  const removeMemberFromTrip = async (memberId: string) => {
+    setActiveMemberId(memberId);
+
+    try {
+      await removeTripMember(trip.id, memberId);
+    } finally {
+      setActiveMemberId(null);
     }
   };
 
@@ -512,7 +553,7 @@ export default function TripDetailsScreen() {
                 Paid by
               </AppText>
               <View style={styles.chipWrap}>
-                {trip.members.map((member) => (
+                {expenseFormMembers.map((member) => (
                   <Chip
                     key={member.id}
                     label={member.displayName}
@@ -528,7 +569,7 @@ export default function TripDetailsScreen() {
                 Involved members
               </AppText>
               <View style={styles.chipWrap}>
-                {trip.members.map((member) => {
+                {expenseFormMembers.map((member) => {
                   const selected = selectedMembers.includes(member.id);
 
                   return (
@@ -746,10 +787,33 @@ export default function TripDetailsScreen() {
             <View style={styles.chipWrap}>
               {trip.members.map((member) => (
                 <View key={member.id} style={styles.memberStatusCard}>
-                  <Chip label={member.displayName} tone={member.isLinked ? "success" : "default"} />
-                  <AppText variant="bodySm" color="muted">
-                    {member.isLinked ? "Linked account" : member.email ? `Invite pending: ${member.email}` : "Manual member"}
-                  </AppText>
+                  <View style={[styles.memberRow, compact ? styles.rowCardCompact : null]}>
+                    <View style={styles.rowCopy}>
+                      <Chip label={member.displayName} tone={member.isLinked ? "success" : "default"} />
+                      <AppText variant="bodySm" color="muted">
+                        {(member.status ?? "active") === "removed"
+                          ? `Removed${member.removedAt ? ` on ${member.removedAt.slice(0, 10)}` : ""}`
+                          : member.isLinked
+                            ? "Linked account"
+                            : member.email
+                              ? `Invite pending: ${member.email}`
+                              : "Manual member"}
+                      </AppText>
+                    </View>
+                    {mayManageTrip &&
+                    isTripActive &&
+                    member.id !== tripCreator?.id &&
+                    (member.status ?? "active") === "active" ? (
+                      <AppButton
+                        onPress={() => removeMemberFromTrip(member.id)}
+                        variant="secondary"
+                        fullWidth={false}
+                        disabled={activeMemberId === member.id}
+                      >
+                        {activeMemberId === member.id ? "Removing..." : "Remove"}
+                      </AppButton>
+                    ) : null}
+                  </View>
                 </View>
               ))}
             </View>
@@ -814,6 +878,12 @@ function createStyles(theme: Theme) {
   },
   memberStatusCard: {
     gap: theme.spacing.xxs
+  },
+  memberRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: theme.spacing.md
   },
   errorBox: {
     padding: theme.spacing.md

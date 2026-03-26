@@ -21,6 +21,7 @@ type TripsContextValue = {
   createTripInviteLink: (tripId: string) => Promise<string>;
   acceptTripInvite: (token: string) => Promise<string>;
   addTripMember: (tripId: string, input: { displayName: string; email?: string }) => Promise<void>;
+  removeTripMember: (tripId: string, memberId: string) => Promise<void>;
   getTripById: (tripId: string) => Trip | undefined;
   getCurrentMemberForTrip: (tripId: string) => Trip["members"][number] | undefined;
   canEditTrip: (tripId: string) => boolean;
@@ -173,9 +174,15 @@ export function TripsProvider({ children }: PropsWithChildren) {
 
         setTrips((current) => current.map((trip) => (trip.id === tripId ? updatedTrip : trip)));
       },
+      removeTripMember: async (tripId, memberId) => {
+        const updatedTrip = await repository.removeTripMember(tripId, memberId);
+        setTrips((current) => current.map((trip) => (trip.id === tripId ? updatedTrip : trip)));
+      },
       getTripById: (tripId) => trips.find((trip) => trip.id === tripId),
       getCurrentMemberForTrip: (tripId) =>
-        trips.find((trip) => trip.id === tripId)?.members.find((member) => member.userId === currentUser.id),
+        trips
+          .find((trip) => trip.id === tripId)
+          ?.members.find((member) => member.userId === currentUser.id && (member.status ?? "active") === "active"),
       canEditTrip: (tripId) => trips.find((trip) => trip.id === tripId)?.createdByUserId === currentUser.id,
       canCompleteTrip: (tripId) => {
         const trip = trips.find((item) => item.id === tripId);

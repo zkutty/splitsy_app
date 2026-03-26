@@ -34,6 +34,7 @@ export type TripsRepository = {
     owner: UserProfile;
   }) => Promise<Trip>;
   addTripMember: (tripId: string, member: UserProfile) => Promise<Trip>;
+  removeTripMember: (tripId: string, memberId: string) => Promise<Trip>;
 };
 
 const demoRepository = (): TripsRepository => {
@@ -277,9 +278,37 @@ const demoRepository = (): TripsRepository => {
                   email: member.email ?? null,
                   displayName: member.displayName,
                   avatarUrl: member.avatarUrl ?? null,
-                  isLinked: false
+                  isLinked: false,
+                  status: "active",
+                  removedAt: null
                 }
               ]
+            }
+          : trip
+      );
+
+      const updatedTrip = trips.find((trip) => trip.id === tripId);
+
+      if (!updatedTrip) {
+        throw new Error("Trip not found");
+      }
+
+      return updatedTrip;
+    },
+    removeTripMember: async (tripId, memberId) => {
+      trips = trips.map((trip) =>
+        trip.id === tripId
+          ? {
+              ...trip,
+              members: trip.members.map((member) =>
+                member.id === memberId
+                  ? {
+                      ...member,
+                      status: "removed",
+                      removedAt: new Date().toISOString()
+                    }
+                  : member
+              )
             }
           : trip
       );
@@ -337,9 +366,27 @@ const supabaseRepository = (): TripsRepository => {
       displayName: memberRow.display_name ?? "Member",
       avatarUrl: memberRow.avatar_url ?? null,
       claimedAt: memberRow.claimed_at ?? null,
-      isLinked: Boolean(memberRow.user_id)
+      isLinked: Boolean(memberRow.user_id),
+      status: memberRow.status ?? "active",
+      removedAt: memberRow.removed_at ?? null
     }))
   });
+
+  const fetchTrip = async (tripId: string) => {
+    const { data, error } = await supabase
+      .from("trips")
+      .select(
+        "id, created_by_user_id, status, name, destination, trip_currency_code, start_date, end_date, completed_at, completed_by_user_id, settled_at, trip_members(id, user_id, display_name, avatar_url, email, claimed_at, status, removed_at)"
+      )
+      .eq("id", tripId)
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    return mapTrip(data);
+  };
 
   const mapSettlementTransfer = (row: any): TripSettlementTransfer => ({
     id: row.id,
@@ -407,7 +454,7 @@ const supabaseRepository = (): TripsRepository => {
       const { data, error } = await supabase
         .from("trips")
         .select(
-          "id, created_by_user_id, status, name, destination, trip_currency_code, start_date, end_date, completed_at, completed_by_user_id, settled_at, trip_members(id, user_id, display_name, avatar_url, email, claimed_at)"
+          "id, created_by_user_id, status, name, destination, trip_currency_code, start_date, end_date, completed_at, completed_by_user_id, settled_at, trip_members(id, user_id, display_name, avatar_url, email, claimed_at, status, removed_at)"
         )
         .order("start_date", { ascending: false });
 
@@ -597,7 +644,7 @@ const supabaseRepository = (): TripsRepository => {
 
       const { data: tripMembers, error: membersError } = await supabase
         .from("trip_members")
-        .select("id, user_id, display_name, avatar_url, email, claimed_at")
+        .select("id, user_id, display_name, avatar_url, email, claimed_at, status, removed_at")
         .eq("trip_id", tripId);
 
       if (membersError) {
@@ -719,13 +766,70 @@ const supabaseRepository = (): TripsRepository => {
             email: input.owner.email ?? null,
             displayName: ownerMemberRow.display_name,
             avatarUrl: ownerMemberRow.avatar_url ?? null,
-            isLinked: true
+            isLinked: true,
+            status: "active",
+            removedAt: null
           }
         ]
       };
     },
     addTripMember: async (tripId, member) => {
+      const normalizedEmail = normalizeEmail(member.email);
+
+      if (normalizedEmail) {
+        const { data: restoredByEmail, error: restoreByEmailError } = await supabase
+          .from("trip_members")
+          .update({
+            status: "active",
+            removed_at: null,
+            removed_by_user_id: null,
+            display_name: member.displayName,
+            email: member.email ?? null,
+            normalized_email: normalizedEmail,
+            avatar_url: member.avatarUrl ?? null
+          })
+          .eq("trip_id", tripId)
+          .eq("normalized_email", normalizedEmail)
+          .eq("status", "removed")
+          .select("id")
+          .maybeSingle();
+
+        if (restoreByEmailError) {
+          throw restoreByEmailError;
+        }
+
+        if (restoredByEmail?.id) {
+          return fetchTrip(tripId);
+        }
+      }
+
       if (isUuid(member.id)) {
+        const { data: restoredByUser, error: restoreByUserError } = await supabase
+          .from("trip_members")
+          .update({
+            status: "active",
+            removed_at: null,
+            removed_by_user_id: null,
+            user_id: member.id,
+            display_name: member.displayName,
+            email: member.email ?? null,
+            normalized_email: normalizedEmail,
+            avatar_url: member.avatarUrl ?? null
+          })
+          .eq("trip_id", tripId)
+          .eq("user_id", member.id)
+          .eq("status", "removed")
+          .select("id")
+          .maybeSingle();
+
+        if (restoreByUserError) {
+          throw restoreByUserError;
+        }
+
+        if (restoredByUser?.id) {
+          return fetchTrip(tripId);
+        }
+
         const { error: profileError } = await supabase.from("users").upsert(
           {
             id: member.id,
@@ -748,7 +852,7 @@ const supabaseRepository = (): TripsRepository => {
         user_id: isUuid(member.id) ? member.id : null,
         display_name: member.displayName,
         email: member.email ?? null,
-        normalized_email: normalizeEmail(member.email),
+        normalized_email: normalizedEmail,
         avatar_url: member.avatarUrl ?? null
       });
 
@@ -756,19 +860,18 @@ const supabaseRepository = (): TripsRepository => {
         throw membershipError;
       }
 
-      const { data, error } = await supabase
-        .from("trips")
-        .select(
-          "id, created_by_user_id, status, name, destination, trip_currency_code, start_date, end_date, completed_at, completed_by_user_id, settled_at, trip_members(id, user_id, display_name, avatar_url, email, claimed_at)"
-        )
-        .eq("id", tripId)
-        .single();
+      return fetchTrip(tripId);
+    },
+    removeTripMember: async (tripId, memberId) => {
+      const { error } = await supabase.rpc("remove_trip_member", {
+        target_trip_member_id: memberId
+      });
 
       if (error) {
         throw error;
       }
 
-      return mapTrip(data);
+      return fetchTrip(tripId);
     }
   };
 };

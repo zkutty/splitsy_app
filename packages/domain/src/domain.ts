@@ -1,6 +1,7 @@
 export type CurrencyCode = string;
 export type TripStatus = "active" | "completed" | "settled";
 export type SettlementTransferStatus = "pending" | "paid" | "confirmed";
+export type MemberStatus = "active" | "removed";
 
 export type ExpenseCategoryId =
   | "lodging"
@@ -21,6 +22,8 @@ export type Member = {
   avatarUrl?: string | null;
   claimedAt?: string | null;
   isLinked?: boolean;
+  status?: MemberStatus;
+  removedAt?: string | null;
 };
 
 export type UserProfile = {

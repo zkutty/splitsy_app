@@ -17,9 +17,9 @@ export const SAMPLE_TRIP: Trip = {
   startDate: "2026-05-08",
   endDate: "2026-05-13",
   members: [
-    { id: "mia", userId: SAMPLE_USER.id, email: SAMPLE_USER.email, displayName: "Mia", isLinked: true },
-    { id: "leo", email: "leo@example.com", displayName: "Leo", isLinked: false },
-    { id: "zoe", email: "zoe@example.com", displayName: "Zoe", isLinked: false }
+    { id: "mia", userId: SAMPLE_USER.id, email: SAMPLE_USER.email, displayName: "Mia", isLinked: true, status: "active" },
+    { id: "leo", email: "leo@example.com", displayName: "Leo", isLinked: false, status: "active" },
+    { id: "zoe", email: "zoe@example.com", displayName: "Zoe", isLinked: false, status: "active" }
   ]
 };
 
