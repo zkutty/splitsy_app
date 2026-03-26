@@ -1,4 +1,4 @@
-import type { Expense, ExpenseDraft, Trip, UserProfile } from "@splitsy/domain";
+import type { Expense, ExpenseDraft, SettlementTransfer, Trip, TripSettlementTransfer, UserProfile } from "@splitsy/domain";
 import { SAMPLE_EXPENSES, SAMPLE_TRIP, SAMPLE_USER } from "@splitsy/domain";
 
 import { createSupabaseClient, hasSupabaseConfig } from "./supabase";
@@ -13,9 +13,16 @@ export type TripsRepository = {
   claimMembershipsForCurrentUser: () => Promise<void>;
   listTrips: () => Promise<Trip[]>;
   listExpenses: (tripId: string) => Promise<Expense[]>;
+  listSettlementTransfers: (tripId: string) => Promise<TripSettlementTransfer[]>;
   createExpense: (tripId: string, draft: AddExpenseInput) => Promise<Expense>;
   updateExpense: (expenseId: string, tripId: string, draft: AddExpenseInput) => Promise<Expense>;
   deleteExpense: (expenseId: string) => Promise<void>;
+  completeTrip: (
+    tripId: string,
+    transfers: SettlementTransfer[]
+  ) => Promise<{ trip: Trip; transfers: TripSettlementTransfer[] }>;
+  markSettlementTransferPaid: (transferId: string) => Promise<TripSettlementTransfer>;
+  confirmSettlementTransferReceived: (transferId: string) => Promise<TripSettlementTransfer>;
   createTrip: (input: {
     name: string;
     destination?: string;
@@ -30,12 +37,15 @@ export type TripsRepository = {
 const demoRepository = (): TripsRepository => {
   let trips = [SAMPLE_TRIP];
   let expenses = [...SAMPLE_EXPENSES];
+  let settlementTransfers: TripSettlementTransfer[] = [];
 
   return {
     ensureProfile: async () => undefined,
     claimMembershipsForCurrentUser: async () => undefined,
     listTrips: async () => trips,
     listExpenses: async (tripId) => expenses.filter((expense) => expense.tripId === tripId),
+    listSettlementTransfers: async (tripId) =>
+      settlementTransfers.filter((transfer) => transfer.tripId === tripId),
     createExpense: async (tripId, draft) => {
       const expense: Expense = {
         id: `exp_${expenses.length + 1}`,
@@ -84,10 +94,120 @@ const demoRepository = (): TripsRepository => {
     deleteExpense: async (expenseId) => {
       expenses = expenses.filter((expense) => expense.id !== expenseId);
     },
+    completeTrip: async (tripId, transfers) => {
+      const trip = trips.find((item) => item.id === tripId);
+
+      if (!trip) {
+        throw new Error("Trip not found");
+      }
+
+      if (trip.status !== "active") {
+        throw new Error("This trip has already been completed.");
+      }
+
+      const now = new Date().toISOString();
+      const nextStatus = transfers.length ? "completed" : "settled";
+      const persistedTransfers = transfers.map((transfer, index) => ({
+        id: `transfer_${tripId}_${index + 1}`,
+        tripId,
+        ...transfer,
+        status: "pending" as const,
+        paidMarkedAt: null,
+        paidMarkedByUserId: null,
+        confirmedAt: null,
+        confirmedByUserId: null,
+        createdAt: now
+      }));
+
+      settlementTransfers = [
+        ...settlementTransfers.filter((transfer) => transfer.tripId !== tripId),
+        ...persistedTransfers
+      ];
+
+      const updatedTrip: Trip = {
+        ...trip,
+        status: nextStatus,
+        completedAt: now,
+        completedByUserId: SAMPLE_USER.id,
+        settledAt: nextStatus === "settled" ? now : null
+      };
+
+      trips = trips.map((item) => (item.id === tripId ? updatedTrip : item));
+
+      return {
+        trip: updatedTrip,
+        transfers: persistedTransfers
+      };
+    },
+    markSettlementTransferPaid: async (transferId) => {
+      const existingTransfer = settlementTransfers.find((transfer) => transfer.id === transferId);
+
+      if (!existingTransfer) {
+        throw new Error("Settlement transfer not found");
+      }
+
+      if (existingTransfer.status !== "pending") {
+        throw new Error("This payment is no longer pending.");
+      }
+
+      const updatedTransfer: TripSettlementTransfer = {
+        ...existingTransfer,
+        status: "paid",
+        paidMarkedAt: new Date().toISOString(),
+        paidMarkedByUserId: SAMPLE_USER.id
+      };
+
+      settlementTransfers = settlementTransfers.map((transfer) =>
+        transfer.id === transferId ? updatedTransfer : transfer
+      );
+
+      return updatedTransfer;
+    },
+    confirmSettlementTransferReceived: async (transferId) => {
+      const existingTransfer = settlementTransfers.find((transfer) => transfer.id === transferId);
+
+      if (!existingTransfer) {
+        throw new Error("Settlement transfer not found");
+      }
+
+      if (existingTransfer.status !== "paid") {
+        throw new Error("Only paid transfers can be confirmed.");
+      }
+
+      const updatedTransfer: TripSettlementTransfer = {
+        ...existingTransfer,
+        status: "confirmed",
+        confirmedAt: new Date().toISOString(),
+        confirmedByUserId: SAMPLE_USER.id
+      };
+
+      settlementTransfers = settlementTransfers.map((transfer) =>
+        transfer.id === transferId ? updatedTransfer : transfer
+      );
+
+      const remainingTransfers = settlementTransfers.filter(
+        (transfer) => transfer.tripId === updatedTransfer.tripId && transfer.status !== "confirmed"
+      );
+
+      if (remainingTransfers.length === 0) {
+        trips = trips.map((trip) =>
+          trip.id === updatedTransfer.tripId
+            ? {
+                ...trip,
+                status: "settled",
+                settledAt: new Date().toISOString()
+              }
+            : trip
+        );
+      }
+
+      return updatedTransfer;
+    },
     createTrip: async (input) => {
       const trip: Trip = {
         id: `trip_${trips.length + 1}`,
         createdByUserId: input.owner.id,
+        status: "active",
         name: input.name,
         destination: input.destination ?? null,
         tripCurrencyCode: input.tripCurrencyCode,
@@ -165,11 +285,15 @@ const supabaseRepository = (): TripsRepository => {
   const mapTrip = (row: any): Trip => ({
     id: row.id,
     createdByUserId: row.created_by_user_id,
+    status: row.status ?? "active",
     name: row.name,
     destination: row.destination,
     tripCurrencyCode: row.trip_currency_code,
     startDate: row.start_date,
     endDate: row.end_date,
+    completedAt: row.completed_at ?? null,
+    completedByUserId: row.completed_by_user_id ?? null,
+    settledAt: row.settled_at ?? null,
     members: (row.trip_members ?? []).map((memberRow: any) => ({
       id: memberRow.id,
       userId: memberRow.user_id ?? null,
@@ -179,6 +303,21 @@ const supabaseRepository = (): TripsRepository => {
       claimedAt: memberRow.claimed_at ?? null,
       isLinked: Boolean(memberRow.user_id)
     }))
+  });
+
+  const mapSettlementTransfer = (row: any): TripSettlementTransfer => ({
+    id: row.id,
+    tripId: row.trip_id,
+    fromMemberId: row.from_member_id,
+    toMemberId: row.to_member_id,
+    amount: Number(row.amount),
+    currencyCode: row.currency_code,
+    status: row.status,
+    paidMarkedAt: row.paid_marked_at ?? null,
+    paidMarkedByUserId: row.paid_marked_by_user_id ?? null,
+    confirmedAt: row.confirmed_at ?? null,
+    confirmedByUserId: row.confirmed_by_user_id ?? null,
+    createdAt: row.created_at
   });
 
   return {
@@ -209,7 +348,9 @@ const supabaseRepository = (): TripsRepository => {
     listTrips: async () => {
       const { data, error } = await supabase
         .from("trips")
-        .select("id, created_by_user_id, name, destination, trip_currency_code, start_date, end_date, trip_members(id, user_id, display_name, avatar_url, email, claimed_at)")
+        .select(
+          "id, created_by_user_id, status, name, destination, trip_currency_code, start_date, end_date, completed_at, completed_by_user_id, settled_at, trip_members(id, user_id, display_name, avatar_url, email, claimed_at)"
+        )
         .order("start_date", { ascending: false });
 
       if (error) {
@@ -246,6 +387,21 @@ const supabaseRepository = (): TripsRepository => {
         involvedMemberIds: (row.expense_participants ?? []).map((item: any) => item.member_id),
         createdAt: row.created_at
       }));
+    },
+    listSettlementTransfers: async (tripId) => {
+      const { data, error } = await supabase
+        .from("trip_settlement_transfers")
+        .select(
+          "id, trip_id, from_member_id, to_member_id, amount, currency_code, status, paid_marked_at, paid_marked_by_user_id, confirmed_at, confirmed_by_user_id, created_at"
+        )
+        .eq("trip_id", tripId)
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        throw error;
+      }
+
+      return (data ?? []).map(mapSettlementTransfer);
     },
     createExpense: async (tripId, draft) => {
       const createdByUserId = await getCurrentUserId();
@@ -366,6 +522,72 @@ const supabaseRepository = (): TripsRepository => {
         throw error;
       }
     },
+    completeTrip: async (tripId, transfers) => {
+      const { data: completedTrip, error: completeError } = await supabase.rpc("complete_trip", {
+        target_trip_id: tripId,
+        settlement_transfers: transfers.map((transfer) => ({
+          fromMemberId: transfer.fromMemberId,
+          toMemberId: transfer.toMemberId,
+          amount: transfer.amount,
+          currencyCode: transfer.currencyCode
+        }))
+      });
+
+      if (completeError) {
+        throw completeError;
+      }
+
+      const { data: tripMembers, error: membersError } = await supabase
+        .from("trip_members")
+        .select("id, user_id, display_name, avatar_url, email, claimed_at")
+        .eq("trip_id", tripId);
+
+      if (membersError) {
+        throw membersError;
+      }
+
+      const persistedTransfers = await supabase
+        .from("trip_settlement_transfers")
+        .select(
+          "id, trip_id, from_member_id, to_member_id, amount, currency_code, status, paid_marked_at, paid_marked_by_user_id, confirmed_at, confirmed_by_user_id, created_at"
+        )
+        .eq("trip_id", tripId)
+        .order("created_at", { ascending: true });
+
+      if (persistedTransfers.error) {
+        throw persistedTransfers.error;
+      }
+
+      return {
+        trip: mapTrip({
+          ...completedTrip,
+          trip_members: tripMembers ?? []
+        }),
+        transfers: (persistedTransfers.data ?? []).map(mapSettlementTransfer)
+      };
+    },
+    markSettlementTransferPaid: async (transferId) => {
+      const { data, error } = await supabase.rpc("mark_settlement_transfer_paid", {
+        target_transfer_id: transferId
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      return mapSettlementTransfer(data);
+    },
+    confirmSettlementTransferReceived: async (transferId) => {
+      const { data, error } = await supabase.rpc("confirm_settlement_transfer_received", {
+        target_transfer_id: transferId
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      return mapSettlementTransfer(data);
+    },
     createTrip: async (input) => {
       const { error: profileError } = await supabase.from("users").upsert(
         {
@@ -386,13 +608,17 @@ const supabaseRepository = (): TripsRepository => {
       const { data: tripRow, error: tripError } = await supabase
         .from("trips")
         .insert({
+          owner_user_id: input.owner.id,
+          created_by_user_id: input.owner.id,
           name: input.name,
           destination: input.destination ?? null,
           trip_currency_code: input.tripCurrencyCode,
           start_date: input.startDate ?? null,
           end_date: input.endDate ?? null
         })
-        .select("id, created_by_user_id, name, destination, trip_currency_code, start_date, end_date")
+        .select(
+          "id, created_by_user_id, status, name, destination, trip_currency_code, start_date, end_date, completed_at, completed_by_user_id, settled_at"
+        )
         .single();
 
       if (tripError) {
@@ -419,11 +645,15 @@ const supabaseRepository = (): TripsRepository => {
       return {
         id: tripRow.id,
         createdByUserId: tripRow.created_by_user_id,
+        status: tripRow.status ?? "active",
         name: tripRow.name,
         destination: tripRow.destination,
         tripCurrencyCode: tripRow.trip_currency_code,
         startDate: tripRow.start_date,
         endDate: tripRow.end_date,
+        completedAt: tripRow.completed_at ?? null,
+        completedByUserId: tripRow.completed_by_user_id ?? null,
+        settledAt: tripRow.settled_at ?? null,
         members: [
           {
             id: ownerMemberRow.id,
@@ -470,7 +700,9 @@ const supabaseRepository = (): TripsRepository => {
 
       const { data, error } = await supabase
         .from("trips")
-        .select("id, created_by_user_id, name, destination, trip_currency_code, start_date, end_date, trip_members(id, user_id, display_name, avatar_url, email, claimed_at)")
+        .select(
+          "id, created_by_user_id, status, name, destination, trip_currency_code, start_date, end_date, completed_at, completed_by_user_id, settled_at, trip_members(id, user_id, display_name, avatar_url, email, claimed_at)"
+        )
         .eq("id", tripId)
         .single();
 

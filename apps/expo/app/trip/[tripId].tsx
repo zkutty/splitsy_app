@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View, useWindowDimensions } from "react-native";
 
 import { PRESET_CATEGORIES, settleTrip, validateExpenseDraft } from "@splitsy/domain";
-import type { Expense } from "@splitsy/domain";
+import type { Expense, TripSettlementTransfer } from "@splitsy/domain";
 
 import { formatCurrency } from "../../src/lib/format";
 import { getConversionRate, MAJOR_CURRENCIES } from "../../src/lib/rates";
@@ -25,8 +25,15 @@ export default function TripDetailsScreen() {
     getTripById,
     getCurrentMemberForTrip,
     canEditTrip,
+    canCompleteTrip,
+    completeTrip,
     getExpensesForTrip,
+    getSettlementTransfersForTrip,
     canEditExpense,
+    canMarkSettlementTransferPaid,
+    markSettlementTransferPaid,
+    canConfirmSettlementTransferReceived,
+    confirmSettlementTransferReceived,
     addExpense,
     updateExpense,
     deleteExpense,
@@ -36,7 +43,9 @@ export default function TripDetailsScreen() {
   const trip = getTripById(tripId);
   const currentMember = getCurrentMemberForTrip(tripId);
   const mayManageTrip = canEditTrip(tripId);
+  const mayCompleteTrip = canCompleteTrip(tripId);
   const expenses = getExpensesForTrip(tripId);
+  const persistedTransfers = getSettlementTransfersForTrip(tripId);
   const { width } = useWindowDimensions();
   const wide = width >= 1040;
 
@@ -53,6 +62,8 @@ export default function TripDetailsScreen() {
   const [errors, setErrors] = useState<string[]>([]);
   const [isSavingExpense, setIsSavingExpense] = useState(false);
   const [isAddingMember, setIsAddingMember] = useState(false);
+  const [isCompletingTrip, setIsCompletingTrip] = useState(false);
+  const [activeTransferId, setActiveTransferId] = useState<string | null>(null);
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -94,6 +105,7 @@ export default function TripDetailsScreen() {
   }, [expenses, trip]);
 
   const tripCreator = trip?.members.find((member) => member.userId === trip.createdByUserId);
+  const isTripActive = trip?.status === "active";
 
   if (!session.isLoading && !session.isAuthenticated) {
     return <Redirect href="/sign-in" />;
@@ -126,6 +138,11 @@ export default function TripDetailsScreen() {
   };
 
   const submitExpense = async () => {
+    if (!isTripActive) {
+      setErrors(["Completed trips are read-only."]);
+      return;
+    }
+
     const numericAmount = Number(amount);
     const draft = {
       expenseDate,
@@ -214,7 +231,7 @@ export default function TripDetailsScreen() {
   };
 
   const submitMember = async () => {
-    if (!memberName.trim()) {
+    if (!isTripActive || !memberName.trim()) {
       return;
     }
 
@@ -231,6 +248,70 @@ export default function TripDetailsScreen() {
     } finally {
       setIsAddingMember(false);
     }
+  };
+
+  const runCompleteTrip = async () => {
+    if (!mayCompleteTrip) {
+      return;
+    }
+
+    setIsCompletingTrip(true);
+
+    try {
+      await completeTrip(trip.id);
+    } finally {
+      setIsCompletingTrip(false);
+    }
+  };
+
+  const markTransferPaid = async (transferId: string) => {
+    setActiveTransferId(transferId);
+
+    try {
+      await markSettlementTransferPaid(transferId);
+    } finally {
+      setActiveTransferId(null);
+    }
+  };
+
+  const confirmTransferReceived = async (transferId: string) => {
+    setActiveTransferId(transferId);
+
+    try {
+      await confirmSettlementTransferReceived(transferId);
+    } finally {
+      setActiveTransferId(null);
+    }
+  };
+
+  const renderPersistedTransferActions = (transfer: TripSettlementTransfer) => {
+    if (canMarkSettlementTransferPaid(transfer.id)) {
+      return (
+        <AppButton
+          onPress={() => markTransferPaid(transfer.id)}
+          variant="secondary"
+          fullWidth={false}
+          disabled={activeTransferId === transfer.id}
+        >
+          {activeTransferId === transfer.id ? "Saving..." : "Mark paid"}
+        </AppButton>
+      );
+    }
+
+    if (canConfirmSettlementTransferReceived(transfer.id)) {
+      return (
+        <AppButton
+          onPress={() => confirmTransferReceived(transfer.id)}
+          variant="secondary"
+          fullWidth={false}
+          disabled={activeTransferId === transfer.id}
+        >
+          {activeTransferId === transfer.id ? "Saving..." : "Confirm received"}
+        </AppButton>
+      );
+    }
+
+    return null;
   };
 
   return (
@@ -251,28 +332,44 @@ export default function TripDetailsScreen() {
               {trip.startDate ? `${trip.startDate}${trip.endDate ? ` to ${trip.endDate}` : ""}` : "Dates not set"}
             </AppText>
             <AppText variant="bodySm" color="accent">
+              Status: {trip.status ?? "active"}
+            </AppText>
+            <AppText variant="bodySm" color="accent">
               {tripCreator ? `Created by ${tripCreator.displayName}` : "Creator metadata unavailable"} ·{" "}
               {currentMember ? `Signed in as ${currentMember.displayName}` : "You are viewing this trip as a guest member"}
             </AppText>
             <AppText variant="sectionTitle" color="inverse">
               {settlement ? formatCurrency(settlement.totalTripSpend, settlement.currencyCode) : ""}
             </AppText>
+            {mayCompleteTrip ? (
+              <AppButton onPress={runCompleteTrip} disabled={isCompletingTrip} fullWidth={false}>
+                {isCompletingTrip ? "Completing..." : "Complete trip"}
+              </AppButton>
+            ) : null}
           </SurfaceCard>
 
           <SectionCard
             title={editingExpenseId ? "Edit expense" : "Add expense"}
             description={
-              editingExpenseId
-                ? "Only the person who added an expense can edit it."
-                : "Any linked trip member can add expenses. Only the creator of an expense can edit or delete it."
+              isTripActive
+                ? editingExpenseId
+                  ? "Only the person who added an expense can edit it."
+                  : "Any linked trip member can add expenses. Only the creator of an expense can edit or delete it."
+                : "This trip is completed, so expenses are now locked."
             }
           >
+            {!isTripActive ? (
+              <AppText variant="bodySm" color="muted">
+                Expense editing is unavailable after completion.
+              </AppText>
+            ) : null}
             <AppInput
               label="Amount"
               value={amount}
               onChangeText={setAmount}
               placeholder="48.00"
               keyboardType="decimal-pad"
+              editable={isTripActive}
             />
             <AppInput
               label="Expense date"
@@ -280,6 +377,7 @@ export default function TripDetailsScreen() {
               onChangeText={setExpenseDate}
               placeholder="2026-06-10"
               helperText="Use YYYY-MM-DD."
+              editable={isTripActive}
             />
             <View style={styles.group}>
               <AppText variant="meta" color="muted">
@@ -291,7 +389,7 @@ export default function TripDetailsScreen() {
                     key={currency.code}
                     label={currency.code}
                     selected={currencyCode === currency.code}
-                    onPress={() => setCurrencyCode(currency.code)}
+                    onPress={isTripActive ? () => setCurrencyCode(currency.code) : undefined}
                   />
                 ))}
               </View>
@@ -299,7 +397,13 @@ export default function TripDetailsScreen() {
                 Expense amounts are converted into {trip.tripCurrencyCode} for settlement.
               </AppText>
             </View>
-            <AppInput label="Note" value={note} onChangeText={setNote} placeholder="Dinner by the river" />
+            <AppInput
+              label="Note"
+              value={note}
+              onChangeText={setNote}
+              placeholder="Dinner by the river"
+              editable={isTripActive}
+            />
 
             <View style={styles.group}>
               <AppText variant="meta" color="muted">
@@ -311,7 +415,7 @@ export default function TripDetailsScreen() {
                     key={item.id}
                     label={item.label}
                     selected={category === item.id}
-                    onPress={() => setCategory(item.id)}
+                    onPress={isTripActive ? () => setCategory(item.id) : undefined}
                   />
                 ))}
               </View>
@@ -323,6 +427,7 @@ export default function TripDetailsScreen() {
                 value={customCategory}
                 onChangeText={setCustomCategory}
                 placeholder="Tickets"
+                editable={isTripActive}
               />
             ) : null}
 
@@ -336,7 +441,7 @@ export default function TripDetailsScreen() {
                     key={member.id}
                     label={member.displayName}
                     selected={paidByMemberId === member.id}
-                    onPress={() => setPaidByMemberId(member.id)}
+                    onPress={isTripActive ? () => setPaidByMemberId(member.id) : undefined}
                   />
                 ))}
               </View>
@@ -355,7 +460,7 @@ export default function TripDetailsScreen() {
                       key={member.id}
                       label={member.displayName}
                       selected={selected}
-                      onPress={() => toggleMember(member.id)}
+                      onPress={isTripActive ? () => toggleMember(member.id) : undefined}
                     />
                   );
                 })}
@@ -373,7 +478,7 @@ export default function TripDetailsScreen() {
             ) : null}
 
             <View style={styles.actionRow}>
-              <AppButton onPress={submitExpense} disabled={isSavingExpense}>
+              <AppButton onPress={submitExpense} disabled={isSavingExpense || !isTripActive}>
                 {isSavingExpense ? "Saving..." : editingExpenseId ? "Save changes" : "Save expense"}
               </AppButton>
               {editingExpenseId ? (
@@ -422,7 +527,7 @@ export default function TripDetailsScreen() {
                       </View>
                     ) : (
                       <AppText variant="bodySm" color="muted">
-                        View only
+                        {trip.status === "active" ? "View only" : "Locked after completion"}
                       </AppText>
                     )}
                   </View>
@@ -464,37 +569,73 @@ export default function TripDetailsScreen() {
             })}
           </SectionCard>
 
-          <SectionCard title="Repayments" description="SplitTrip minimizes the number of transfers needed to settle up.">
-            {settlement?.transfers.length ? (
-              settlement.transfers.map((transfer) => {
-                const from = trip.members.find((member) => member.id === transfer.fromMemberId);
-                const to = trip.members.find((member) => member.id === transfer.toMemberId);
+          {trip.status === "active" ? (
+            <SectionCard title="Repayments" description="SplitTrip minimizes the number of transfers needed to settle up.">
+              {settlement?.transfers.length ? (
+                settlement.transfers.map((transfer) => {
+                  const from = trip.members.find((member) => member.id === transfer.fromMemberId);
+                  const to = trip.members.find((member) => member.id === transfer.toMemberId);
 
-                return (
-                  <View key={`${transfer.fromMemberId}-${transfer.toMemberId}`} style={styles.rowCard}>
-                    <View style={styles.rowCopy}>
-                      <AppText variant="bodySm" color="secondary" style={styles.rowTitle}>
-                        {from?.displayName} pays {to?.displayName}
+                  return (
+                    <View key={`${transfer.fromMemberId}-${transfer.toMemberId}`} style={styles.rowCard}>
+                      <View style={styles.rowCopy}>
+                        <AppText variant="bodySm" color="secondary" style={styles.rowTitle}>
+                          {from?.displayName} pays {to?.displayName}
+                        </AppText>
+                      </View>
+                      <AppText variant="bodySm" color="primary" style={styles.netAmount}>
+                        {formatCurrency(transfer.amount, transfer.currencyCode)}
                       </AppText>
                     </View>
-                    <AppText variant="bodySm" color="primary" style={styles.netAmount}>
-                      {formatCurrency(transfer.amount, transfer.currencyCode)}
-                    </AppText>
-                  </View>
-                );
-              })
-            ) : (
-              <AppText variant="bodySm" color="muted">
-                Trip is already settled.
-              </AppText>
-            )}
-          </SectionCard>
+                  );
+                })
+              ) : (
+                <AppText variant="bodySm" color="muted">
+                  Trip is already settled.
+                </AppText>
+              )}
+            </SectionCard>
+          ) : (
+            <SectionCard title="Final payments" description="These transfers were saved when the trip was completed.">
+              {persistedTransfers.length ? (
+                persistedTransfers.map((transfer) => {
+                  const from = trip.members.find((member) => member.id === transfer.fromMemberId);
+                  const to = trip.members.find((member) => member.id === transfer.toMemberId);
+
+                  return (
+                    <View key={transfer.id} style={styles.rowCard}>
+                      <View style={styles.rowCopy}>
+                        <AppText variant="bodySm" color="secondary" style={styles.rowTitle}>
+                          {from?.displayName} pays {to?.displayName}
+                        </AppText>
+                        <AppText variant="bodySm" color="muted">
+                          Status: {transfer.status}
+                        </AppText>
+                      </View>
+                      <View style={styles.expenseMeta}>
+                        <AppText variant="bodySm" color="primary" style={styles.netAmount}>
+                          {formatCurrency(transfer.amount, transfer.currencyCode)}
+                        </AppText>
+                        {renderPersistedTransferActions(transfer)}
+                      </View>
+                    </View>
+                  );
+                })
+              ) : (
+                <AppText variant="bodySm" color="muted">
+                  No final payments were required for this trip.
+                </AppText>
+              )}
+            </SectionCard>
+          )}
 
           <SectionCard
             title="Members"
             description={
               mayManageTrip
-                ? "Invite everyone who should be included in balances and settlements."
+                ? isTripActive
+                  ? "Invite everyone who should be included in balances and settlements."
+                  : "Member management is locked after completion."
                 : "You can see everyone on the trip. Only the trip creator can manage membership."
             }
           >
@@ -515,6 +656,7 @@ export default function TripDetailsScreen() {
                   value={memberName}
                   onChangeText={setMemberName}
                   placeholder="Emma"
+                  editable={isTripActive}
                 />
                 <AppInput
                   label="Member email"
@@ -524,8 +666,9 @@ export default function TripDetailsScreen() {
                   autoCapitalize="none"
                   keyboardType="email-address"
                   helperText="Add an email if you want this person to automatically claim the trip when they sign in."
+                  editable={isTripActive}
                 />
-                <AppButton onPress={submitMember} variant="secondary" disabled={isAddingMember}>
+                <AppButton onPress={submitMember} variant="secondary" disabled={isAddingMember || !isTripActive}>
                   {isAddingMember ? "Adding..." : "Add member"}
                 </AppButton>
               </>

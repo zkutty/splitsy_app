@@ -13,6 +13,7 @@ export default function HomeScreen() {
   const { width } = useWindowDimensions();
   const wide = width >= 960;
   const recentTrips = trips.slice(0, 3);
+  const activeTripCount = trips.filter((trip) => (trip.status ?? "active") === "active").length;
 
   return (
     <AppScreen>
@@ -48,7 +49,7 @@ export default function HomeScreen() {
           <AppText variant="meta" color="muted">
             Active trips
           </AppText>
-          <AppText variant="title">{trips.length}</AppText>
+          <AppText variant="title">{activeTripCount}</AppText>
           <AppText variant="bodySm" color="muted">
             Every shared travel workspace currently in your account.
           </AppText>
@@ -85,7 +86,7 @@ export default function HomeScreen() {
                       {trip.name}
                     </AppText>
                     <AppText variant="bodySm" color="muted">
-                      {trip.destination ?? "Destination coming soon"} · {trip.tripCurrencyCode}
+                      {trip.destination ?? "Destination coming soon"} · {trip.tripCurrencyCode} · {trip.status ?? "active"}
                     </AppText>
                   </View>
                   <AppText variant="bodySm" color="muted">

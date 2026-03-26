@@ -1,4 +1,6 @@
 export type CurrencyCode = string;
+export type TripStatus = "active" | "completed" | "settled";
+export type SettlementTransferStatus = "pending" | "paid" | "confirmed";
 
 export type ExpenseCategoryId =
   | "lodging"
@@ -31,11 +33,15 @@ export type UserProfile = {
 export type Trip = {
   id: string;
   createdByUserId?: string | null;
+  status?: TripStatus;
   name: string;
   destination?: string | null;
   tripCurrencyCode: CurrencyCode;
   startDate?: string | null;
   endDate?: string | null;
+  completedAt?: string | null;
+  completedByUserId?: string | null;
+  settledAt?: string | null;
   members: Member[];
 };
 
@@ -88,6 +94,17 @@ export type SettlementTransfer = {
   toMemberId: string;
   amount: number;
   currencyCode: CurrencyCode;
+};
+
+export type TripSettlementTransfer = SettlementTransfer & {
+  id: string;
+  tripId: string;
+  status: SettlementTransferStatus;
+  paidMarkedAt?: string | null;
+  paidMarkedByUserId?: string | null;
+  confirmedAt?: string | null;
+  confirmedByUserId?: string | null;
+  createdAt: string;
 };
 
 export type TripSettlement = {

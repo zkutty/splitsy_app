@@ -10,6 +10,7 @@ export const SAMPLE_USER: UserProfile = {
 export const SAMPLE_TRIP: Trip = {
   id: "trip_lisbon",
   createdByUserId: SAMPLE_USER.id,
+  status: "active",
   name: "Lisbon Sprint",
   destination: "Lisbon",
   tripCurrencyCode: "EUR",
