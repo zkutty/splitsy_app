@@ -63,6 +63,7 @@ export function TripsProvider({ children }: PropsWithChildren) {
     const load = async () => {
       setIsLoading(true);
       await repository.ensureProfile(currentUser);
+      await repository.claimMembershipsForCurrentUser();
       const loadedTrips = await repository.listTrips();
       setTrips(loadedTrips);
       const loadedExpenses = loadedTrips.length

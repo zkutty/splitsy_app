@@ -10,6 +10,7 @@ export type AddExpenseInput = ExpenseDraft & {
 
 export type TripsRepository = {
   ensureProfile: (profile: UserProfile) => Promise<void>;
+  claimMembershipsForCurrentUser: () => Promise<void>;
   listTrips: () => Promise<Trip[]>;
   listExpenses: (tripId: string) => Promise<Expense[]>;
   createExpense: (tripId: string, draft: AddExpenseInput) => Promise<Expense>;
@@ -30,6 +31,7 @@ const demoRepository = (): TripsRepository => {
 
   return {
     ensureProfile: async () => undefined,
+    claimMembershipsForCurrentUser: async () => undefined,
     listTrips: async () => trips,
     listExpenses: async (tripId) => expenses.filter((expense) => expense.tripId === tripId),
     createExpense: async (tripId, draft) => {
@@ -120,6 +122,24 @@ const supabaseRepository = (): TripsRepository => {
   const supabase: any = createSupabaseClient();
   const isUuid = (value: string) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+  const normalizeEmail = (value?: string | null) => value?.trim().toLowerCase() ?? null;
+
+  const getCurrentUserId = async () => {
+    const {
+      data: { user },
+      error
+    } = await supabase.auth.getUser();
+
+    if (error) {
+      throw error;
+    }
+
+    if (!user) {
+      throw new Error("You must be signed in to modify trip data.");
+    }
+
+    return user.id;
+  };
 
   const mapTrip = (row: any): Trip => ({
     id: row.id,
@@ -148,6 +168,13 @@ const supabaseRepository = (): TripsRepository => {
           onConflict: "id"
         }
       );
+
+      if (error) {
+        throw error;
+      }
+    },
+    claimMembershipsForCurrentUser: async () => {
+      const { error } = await supabase.rpc("claim_trip_memberships_for_current_user");
 
       if (error) {
         throw error;
@@ -192,10 +219,12 @@ const supabaseRepository = (): TripsRepository => {
       }));
     },
     createExpense: async (tripId, draft) => {
+      const createdByUserId = await getCurrentUserId();
       const { data: insertedExpense, error: expenseError } = await supabase
         .from("expenses")
         .insert({
           trip_id: tripId,
+          created_by_user_id: createdByUserId,
           amount: draft.amount,
           currency_code: draft.currencyCode,
           trip_conversion_rate: draft.conversionRateToTripCurrency,
@@ -323,6 +352,7 @@ const supabaseRepository = (): TripsRepository => {
         .from("trips")
         .insert({
           owner_user_id: input.owner.id,
+          created_by_user_id: input.owner.id,
           name: input.name,
           destination: input.destination ?? null,
           trip_currency_code: input.tripCurrencyCode
@@ -341,6 +371,7 @@ const supabaseRepository = (): TripsRepository => {
           user_id: input.owner.id,
           display_name: input.owner.displayName,
           email: input.owner.email ?? null,
+          normalized_email: normalizeEmail(input.owner.email),
           avatar_url: input.owner.avatarUrl ?? null
         })
         .select("id, display_name, avatar_url")
@@ -390,6 +421,7 @@ const supabaseRepository = (): TripsRepository => {
         user_id: isUuid(member.id) ? member.id : null,
         display_name: member.displayName,
         email: member.email ?? null,
+        normalized_email: normalizeEmail(member.email),
         avatar_url: member.avatarUrl ?? null
       });
 
