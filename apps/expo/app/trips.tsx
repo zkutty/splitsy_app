@@ -200,7 +200,10 @@ export default function TripsScreen() {
                   {trip.destination ?? "Destination coming soon"}
                 </AppText>
                 <AppText variant="bodySm" color="muted">
-                  {trip.members.length} members
+                  {trip.createdByUserId === currentUser.id ? "Created by you" : "Shared with you"}
+                </AppText>
+                <AppText variant="bodySm" color="muted">
+                  {trip.members.length} members · {trip.members.filter((member) => member.isLinked).length} linked
                 </AppText>
               </SurfaceCard>
             </Pressable>

@@ -9,15 +9,16 @@ export const SAMPLE_USER: UserProfile = {
 
 export const SAMPLE_TRIP: Trip = {
   id: "trip_lisbon",
+  createdByUserId: SAMPLE_USER.id,
   name: "Lisbon Sprint",
   destination: "Lisbon",
   tripCurrencyCode: "EUR",
   startDate: "2026-05-08",
   endDate: "2026-05-13",
   members: [
-    { id: "mia", displayName: "Mia" },
-    { id: "leo", displayName: "Leo" },
-    { id: "zoe", displayName: "Zoe" }
+    { id: "mia", userId: SAMPLE_USER.id, email: SAMPLE_USER.email, displayName: "Mia", isLinked: true },
+    { id: "leo", email: "leo@example.com", displayName: "Leo", isLinked: false },
+    { id: "zoe", email: "zoe@example.com", displayName: "Zoe", isLinked: false }
   ]
 };
 
@@ -25,6 +26,7 @@ export const SAMPLE_EXPENSES: Expense[] = [
   {
     id: "exp_1",
     tripId: SAMPLE_TRIP.id,
+    createdByUserId: SAMPLE_USER.id,
     amount: 240,
     currencyCode: "EUR",
     conversionRateToTripCurrency: 1,
@@ -38,6 +40,7 @@ export const SAMPLE_EXPENSES: Expense[] = [
   {
     id: "exp_2",
     tripId: SAMPLE_TRIP.id,
+    createdByUserId: SAMPLE_USER.id,
     amount: 72,
     currencyCode: "USD",
     conversionRateToTripCurrency: 0.92,

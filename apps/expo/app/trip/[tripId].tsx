@@ -19,9 +19,21 @@ import { theme } from "../../src/ui/theme";
 
 export default function TripDetailsScreen() {
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
-  const { getTripById, getExpensesForTrip, addExpense, updateExpense, deleteExpense, addTripMember, isLoading } =
-    useTrips();
+  const {
+    getTripById,
+    getCurrentMemberForTrip,
+    canEditTrip,
+    getExpensesForTrip,
+    canEditExpense,
+    addExpense,
+    updateExpense,
+    deleteExpense,
+    addTripMember,
+    isLoading
+  } = useTrips();
   const trip = getTripById(tripId);
+  const currentMember = getCurrentMemberForTrip(tripId);
+  const mayManageTrip = canEditTrip(tripId);
   const expenses = getExpensesForTrip(tripId);
   const { width } = useWindowDimensions();
   const wide = width >= 1040;
@@ -71,6 +83,8 @@ export default function TripDetailsScreen() {
       trip.tripCurrencyCode
     );
   }, [expenses, trip]);
+
+  const tripCreator = trip?.members.find((member) => member.userId === trip.createdByUserId);
 
   if (isLoading) {
     return (
@@ -144,6 +158,10 @@ export default function TripDetailsScreen() {
   };
 
   const startEditingExpense = (expense: Expense) => {
+    if (!canEditExpense(expense.id)) {
+      return;
+    }
+
     setEditingExpenseId(expense.id);
     setAmount(String(expense.amount));
     setCurrencyCode(expense.currencyCode);
@@ -168,6 +186,10 @@ export default function TripDetailsScreen() {
   };
 
   const removeExpense = async (expenseId: string) => {
+    if (!canEditExpense(expenseId)) {
+      return;
+    }
+
     await deleteExpense(expenseId);
 
     if (editingExpenseId === expenseId) {
@@ -209,6 +231,10 @@ export default function TripDetailsScreen() {
             <AppText variant="bodySm" color="accent">
               {trip.destination ?? "No destination"} · settle in {trip.tripCurrencyCode}
             </AppText>
+            <AppText variant="bodySm" color="accent">
+              {tripCreator ? `Created by ${tripCreator.displayName}` : "Creator metadata unavailable"} ·{" "}
+              {currentMember ? `Signed in as ${currentMember.displayName}` : "You are viewing this trip as a guest member"}
+            </AppText>
             <AppText variant="sectionTitle" color="inverse">
               {settlement ? formatCurrency(settlement.totalTripSpend, settlement.currencyCode) : ""}
             </AppText>
@@ -216,7 +242,11 @@ export default function TripDetailsScreen() {
 
           <SectionCard
             title={editingExpenseId ? "Edit expense" : "Add expense"}
-            description="Capture who paid, who joined, and the original currency."
+            description={
+              editingExpenseId
+                ? "Only the person who added an expense can edit it."
+                : "Any linked trip member can add expenses. Only the creator of an expense can edit or delete it."
+            }
           >
             <AppInput
               label="Amount"
@@ -343,19 +373,29 @@ export default function TripDetailsScreen() {
                       {formatCurrency(expense.amount, expense.currencyCode)} {"->"}{" "}
                       {formatCurrency(expense.tripAmount, trip.tripCurrencyCode)}
                     </AppText>
+                    <AppText variant="bodySm" color="muted">
+                      Added by{" "}
+                      {trip.members.find((member) => member.userId === expense.createdByUserId)?.displayName ?? "Unknown"}
+                    </AppText>
                   </View>
                   <View style={styles.expenseMeta}>
                     <AppText variant="bodySm" color="muted">
                       {expense.involvedMemberIds.length} people
                     </AppText>
-                    <View style={styles.expenseActions}>
-                      <AppButton onPress={() => startEditingExpense(expense)} variant="secondary" fullWidth={false}>
-                        Edit
-                      </AppButton>
-                      <AppButton onPress={() => removeExpense(expense.id)} variant="secondary" fullWidth={false}>
-                        Delete
-                      </AppButton>
-                    </View>
+                    {canEditExpense(expense.id) ? (
+                      <View style={styles.expenseActions}>
+                        <AppButton onPress={() => startEditingExpense(expense)} variant="secondary" fullWidth={false}>
+                          Edit
+                        </AppButton>
+                        <AppButton onPress={() => removeExpense(expense.id)} variant="secondary" fullWidth={false}>
+                          Delete
+                        </AppButton>
+                      </View>
+                    ) : (
+                      <AppText variant="bodySm" color="muted">
+                        View only
+                      </AppText>
+                    )}
                   </View>
                 </View>
               ))
@@ -421,29 +461,46 @@ export default function TripDetailsScreen() {
             )}
           </SectionCard>
 
-          <SectionCard title="Members" description="Invite everyone who should be included in balances and settlements.">
+          <SectionCard
+            title="Members"
+            description={
+              mayManageTrip
+                ? "Invite everyone who should be included in balances and settlements."
+                : "You can see everyone on the trip. Only the trip creator can manage membership."
+            }
+          >
             <View style={styles.chipWrap}>
               {trip.members.map((member) => (
-                <Chip key={member.id} label={member.displayName} tone="success" />
+                <View key={member.id} style={styles.memberStatusCard}>
+                  <Chip label={member.displayName} tone={member.isLinked ? "success" : "default"} />
+                  <AppText variant="bodySm" color="muted">
+                    {member.isLinked ? "Linked account" : member.email ? `Invite pending: ${member.email}` : "Manual member"}
+                  </AppText>
+                </View>
               ))}
             </View>
-            <AppInput
-              label="New member name"
-              value={memberName}
-              onChangeText={setMemberName}
-              placeholder="Emma"
-            />
-            <AppInput
-              label="Member email"
-              value={memberEmail}
-              onChangeText={setMemberEmail}
-              placeholder="emma@example.com"
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
-            <AppButton onPress={submitMember} variant="secondary" disabled={isAddingMember}>
-              {isAddingMember ? "Adding..." : "Add member"}
-            </AppButton>
+            {mayManageTrip ? (
+              <>
+                <AppInput
+                  label="New member name"
+                  value={memberName}
+                  onChangeText={setMemberName}
+                  placeholder="Emma"
+                />
+                <AppInput
+                  label="Member email"
+                  value={memberEmail}
+                  onChangeText={setMemberEmail}
+                  placeholder="emma@example.com"
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  helperText="Add an email if you want this person to automatically claim the trip when they sign in."
+                />
+                <AppButton onPress={submitMember} variant="secondary" disabled={isAddingMember}>
+                  {isAddingMember ? "Adding..." : "Add member"}
+                </AppButton>
+              </>
+            ) : null}
           </SectionCard>
         </View>
       </View>
@@ -477,6 +534,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: theme.spacing.sm
+  },
+  memberStatusCard: {
+    gap: theme.spacing.xxs
   },
   errorBox: {
     padding: theme.spacing.md

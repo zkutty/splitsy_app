@@ -13,8 +13,12 @@ export type ExpenseCategoryId =
 
 export type Member = {
   id: string;
+  userId?: string | null;
+  email?: string | null;
   displayName: string;
   avatarUrl?: string | null;
+  claimedAt?: string | null;
+  isLinked?: boolean;
 };
 
 export type UserProfile = {
@@ -26,6 +30,7 @@ export type UserProfile = {
 
 export type Trip = {
   id: string;
+  createdByUserId?: string | null;
   name: string;
   destination?: string | null;
   tripCurrencyCode: CurrencyCode;
@@ -46,6 +51,7 @@ export type ExpenseParticipant = {
 export type Expense = {
   id: string;
   tripId: string;
+  createdByUserId?: string | null;
   amount: number;
   currencyCode: CurrencyCode;
   conversionRateToTripCurrency: number;

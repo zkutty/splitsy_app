@@ -38,6 +38,7 @@ const demoRepository = (): TripsRepository => {
       const expense: Expense = {
         id: `exp_${expenses.length + 1}`,
         tripId,
+        createdByUserId: SAMPLE_USER.id,
         amount: draft.amount,
         currencyCode: draft.currencyCode,
         conversionRateToTripCurrency: draft.conversionRateToTripCurrency,
@@ -83,12 +84,22 @@ const demoRepository = (): TripsRepository => {
     createTrip: async (input) => {
       const trip: Trip = {
         id: `trip_${trips.length + 1}`,
+        createdByUserId: input.owner.id,
         name: input.name,
         destination: input.destination ?? null,
         tripCurrencyCode: input.tripCurrencyCode,
         startDate: null,
         endDate: null,
-        members: [{ id: input.owner.id, displayName: input.owner.displayName, avatarUrl: input.owner.avatarUrl }]
+        members: [
+          {
+            id: input.owner.id,
+            userId: input.owner.id,
+            email: input.owner.email ?? null,
+            displayName: input.owner.displayName,
+            avatarUrl: input.owner.avatarUrl,
+            isLinked: true
+          }
+        ]
       };
 
       trips = [trip, ...trips];
@@ -101,7 +112,14 @@ const demoRepository = (): TripsRepository => {
               ...trip,
               members: [
                 ...trip.members,
-                { id: member.id, displayName: member.displayName, avatarUrl: member.avatarUrl ?? null }
+                {
+                  id: member.id,
+                  userId: null,
+                  email: member.email ?? null,
+                  displayName: member.displayName,
+                  avatarUrl: member.avatarUrl ?? null,
+                  isLinked: false
+                }
               ]
             }
           : trip
@@ -143,6 +161,7 @@ const supabaseRepository = (): TripsRepository => {
 
   const mapTrip = (row: any): Trip => ({
     id: row.id,
+    createdByUserId: row.created_by_user_id,
     name: row.name,
     destination: row.destination,
     tripCurrencyCode: row.trip_currency_code,
@@ -150,8 +169,12 @@ const supabaseRepository = (): TripsRepository => {
     endDate: row.end_date,
     members: (row.trip_members ?? []).map((memberRow: any) => ({
       id: memberRow.id,
+      userId: memberRow.user_id ?? null,
+      email: memberRow.email ?? null,
       displayName: memberRow.display_name ?? "Member",
-      avatarUrl: memberRow.avatar_url ?? null
+      avatarUrl: memberRow.avatar_url ?? null,
+      claimedAt: memberRow.claimed_at ?? null,
+      isLinked: Boolean(memberRow.user_id)
     }))
   });
 
@@ -183,7 +206,7 @@ const supabaseRepository = (): TripsRepository => {
     listTrips: async () => {
       const { data, error } = await supabase
         .from("trips")
-        .select("id, name, destination, trip_currency_code, start_date, end_date, trip_members(id, user_id, display_name, avatar_url, email)")
+        .select("id, created_by_user_id, name, destination, trip_currency_code, start_date, end_date, trip_members(id, user_id, display_name, avatar_url, email, claimed_at)")
         .order("start_date", { ascending: false });
 
       if (error) {
@@ -195,7 +218,7 @@ const supabaseRepository = (): TripsRepository => {
     listExpenses: async (tripId) => {
       const { data, error } = await supabase
         .from("expenses")
-        .select("id, trip_id, amount, currency_code, trip_conversion_rate, trip_amount, category, custom_category, note, paid_by_member_id, created_at, expense_participants(member_id)")
+        .select("id, trip_id, created_by_user_id, amount, currency_code, trip_conversion_rate, trip_amount, category, custom_category, note, paid_by_member_id, created_at, expense_participants(member_id)")
         .eq("trip_id", tripId)
         .order("created_at", { ascending: false });
 
@@ -206,6 +229,7 @@ const supabaseRepository = (): TripsRepository => {
       return (data ?? []).map((row: any) => ({
         id: row.id,
         tripId: row.trip_id,
+        createdByUserId: row.created_by_user_id,
         amount: Number(row.amount),
         currencyCode: row.currency_code,
         conversionRateToTripCurrency: Number(row.trip_conversion_rate),
@@ -234,7 +258,7 @@ const supabaseRepository = (): TripsRepository => {
           note: draft.note ?? null,
           paid_by_member_id: draft.paidByMemberId
         })
-        .select("id, trip_id, amount, currency_code, trip_conversion_rate, trip_amount, category, custom_category, note, paid_by_member_id, created_at")
+        .select("id, trip_id, created_by_user_id, amount, currency_code, trip_conversion_rate, trip_amount, category, custom_category, note, paid_by_member_id, created_at")
         .single();
 
       if (expenseError) {
@@ -255,6 +279,7 @@ const supabaseRepository = (): TripsRepository => {
       return {
         id: insertedExpense.id,
         tripId: insertedExpense.trip_id,
+        createdByUserId: insertedExpense.created_by_user_id,
         amount: Number(insertedExpense.amount),
         currencyCode: insertedExpense.currency_code,
         conversionRateToTripCurrency: Number(insertedExpense.trip_conversion_rate),
@@ -282,7 +307,7 @@ const supabaseRepository = (): TripsRepository => {
         })
         .eq("id", expenseId)
         .eq("trip_id", tripId)
-        .select("id, trip_id, amount, currency_code, trip_conversion_rate, trip_amount, category, custom_category, note, paid_by_member_id, created_at")
+        .select("id, trip_id, created_by_user_id, amount, currency_code, trip_conversion_rate, trip_amount, category, custom_category, note, paid_by_member_id, created_at")
         .single();
 
       if (expenseError) {
@@ -312,6 +337,7 @@ const supabaseRepository = (): TripsRepository => {
       return {
         id: updatedExpense.id,
         tripId: updatedExpense.trip_id,
+        createdByUserId: updatedExpense.created_by_user_id,
         amount: Number(updatedExpense.amount),
         currencyCode: updatedExpense.currency_code,
         conversionRateToTripCurrency: Number(updatedExpense.trip_conversion_rate),
@@ -357,7 +383,7 @@ const supabaseRepository = (): TripsRepository => {
           destination: input.destination ?? null,
           trip_currency_code: input.tripCurrencyCode
         })
-        .select("id, name, destination, trip_currency_code, start_date, end_date")
+        .select("id, created_by_user_id, name, destination, trip_currency_code, start_date, end_date")
         .single();
 
       if (tripError) {
@@ -383,6 +409,7 @@ const supabaseRepository = (): TripsRepository => {
 
       return {
         id: tripRow.id,
+        createdByUserId: tripRow.created_by_user_id,
         name: tripRow.name,
         destination: tripRow.destination,
         tripCurrencyCode: tripRow.trip_currency_code,
@@ -391,8 +418,11 @@ const supabaseRepository = (): TripsRepository => {
         members: [
           {
             id: ownerMemberRow.id,
+            userId: input.owner.id,
+            email: input.owner.email ?? null,
             displayName: ownerMemberRow.display_name,
-            avatarUrl: ownerMemberRow.avatar_url ?? null
+            avatarUrl: ownerMemberRow.avatar_url ?? null,
+            isLinked: true
           }
         ]
       };
@@ -431,7 +461,7 @@ const supabaseRepository = (): TripsRepository => {
 
       const { data, error } = await supabase
         .from("trips")
-        .select("id, name, destination, trip_currency_code, start_date, end_date, trip_members(id, user_id, display_name, avatar_url, email)")
+        .select("id, created_by_user_id, name, destination, trip_currency_code, start_date, end_date, trip_members(id, user_id, display_name, avatar_url, email, claimed_at)")
         .eq("id", tripId)
         .single();
 

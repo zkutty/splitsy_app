@@ -13,7 +13,10 @@ type TripsContextValue = {
   createTrip: (input: { name: string; destination?: string; tripCurrencyCode: string }) => Promise<void>;
   addTripMember: (tripId: string, input: { displayName: string; email?: string }) => Promise<void>;
   getTripById: (tripId: string) => Trip | undefined;
+  getCurrentMemberForTrip: (tripId: string) => Trip["members"][number] | undefined;
+  canEditTrip: (tripId: string) => boolean;
   getExpensesForTrip: (tripId: string) => Expense[];
+  canEditExpense: (expenseId: string) => boolean;
   addExpense: (tripId: string, draft: AddExpenseInput) => Promise<void>;
   updateExpense: (expenseId: string, tripId: string, draft: AddExpenseInput) => Promise<void>;
   deleteExpense: (expenseId: string) => Promise<void>;
@@ -135,7 +138,12 @@ export function TripsProvider({ children }: PropsWithChildren) {
         setTrips((current) => current.map((trip) => (trip.id === tripId ? updatedTrip : trip)));
       },
       getTripById: (tripId) => trips.find((trip) => trip.id === tripId),
+      getCurrentMemberForTrip: (tripId) =>
+        trips.find((trip) => trip.id === tripId)?.members.find((member) => member.userId === currentUser.id),
+      canEditTrip: (tripId) => trips.find((trip) => trip.id === tripId)?.createdByUserId === currentUser.id,
       getExpensesForTrip: (tripId) => expenses.filter((expense) => expense.tripId === tripId),
+      canEditExpense: (expenseId) =>
+        expenses.find((expense) => expense.id === expenseId)?.createdByUserId === currentUser.id,
       addExpense: async (tripId, draft) => {
         const expense = await repository.createExpense(tripId, draft);
         setExpenses((current) => [expense, ...current]);
