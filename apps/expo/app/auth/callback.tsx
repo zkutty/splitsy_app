@@ -3,10 +3,12 @@ import { useEffect } from "react";
 import { View } from "react-native";
 
 import { useSession } from "../../src/providers/session-provider";
+import { useAppTheme } from "../../src/ui/theme";
 
 export default function AuthCallbackScreen() {
   const router = useRouter();
   const { isLoading, isAuthenticated, consumePendingPostAuthPath } = useSession();
+  const { theme } = useAppTheme();
 
   useEffect(() => {
     if (isLoading) {
@@ -22,5 +24,5 @@ export default function AuthCallbackScreen() {
     router.replace("/sign-in");
   }, [consumePendingPostAuthPath, isAuthenticated, isLoading, router]);
 
-  return <View style={{ flex: 1, backgroundColor: "#f6f1e8" }} />;
+  return <View style={{ flex: 1, backgroundColor: theme.colors.background.canvas }} />;
 }

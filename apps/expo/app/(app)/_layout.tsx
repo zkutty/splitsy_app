@@ -3,10 +3,11 @@ import { View } from "react-native";
 
 import { useSession } from "../../src/providers/session-provider";
 import { AppTabBar } from "../../src/ui/navigation/AppTabBar";
-import { theme } from "../../src/ui/theme";
+import { useAppTheme } from "../../src/ui/theme";
 
 export default function AppLayout() {
   const session = useSession();
+  const { theme } = useAppTheme();
 
   if (session.isLoading) {
     return <View style={{ flex: 1, backgroundColor: theme.colors.background.canvas }} />;

@@ -17,7 +17,7 @@ import { AppText } from "../../src/ui/primitives/AppText";
 import { Chip } from "../../src/ui/primitives/Chip";
 import { SectionCard } from "../../src/ui/primitives/SectionCard";
 import { SurfaceCard } from "../../src/ui/primitives/SurfaceCard";
-import { theme } from "../../src/ui/theme";
+import { Theme, useAppTheme } from "../../src/ui/theme";
 
 export default function TripDetailsScreen() {
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
@@ -42,6 +42,8 @@ export default function TripDetailsScreen() {
     addTripMember,
     isLoading
   } = useTrips();
+  const { theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const trip = getTripById(tripId);
   const currentMember = getCurrentMemberForTrip(tripId);
   const mayManageTrip = canEditTrip(tripId);
@@ -782,7 +784,8 @@ export default function TripDetailsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: Theme) {
+  return StyleSheet.create({
   layout: {
     gap: theme.spacing.lg
   },
@@ -859,4 +862,5 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     justifyContent: "flex-start"
   }
-});
+  });
+}

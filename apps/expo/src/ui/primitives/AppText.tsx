@@ -1,7 +1,7 @@
-import { PropsWithChildren } from "react";
+import { PropsWithChildren, useMemo } from "react";
 import { StyleProp, StyleSheet, Text, TextStyle } from "react-native";
 
-import { theme } from "../theme";
+import { Theme, useAppTheme } from "../theme";
 
 type AppTextProps = PropsWithChildren<{
   variant?: "eyebrow" | "title" | "sectionTitle" | "body" | "bodySm" | "meta";
@@ -11,55 +11,57 @@ type AppTextProps = PropsWithChildren<{
 }>;
 
 export function AppText({ children, variant = "body", color = "primary", align = "left", style }: AppTextProps) {
-  return <Text style={[styles.base, variantStyles[variant], colorStyles[color], { textAlign: align }, style]}>{children}</Text>;
-}
+  const { theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
-const styles = StyleSheet.create({
-  base: {
-    color: theme.colors.text.primary
-  }
-});
+  return <Text style={[styles.base, variantStyles[variant], styles[color], { textAlign: align }, style]}>{children}</Text>;
+}
 
 const variantStyles = StyleSheet.create({
   eyebrow: {
-    fontSize: theme.type.size.caption,
-    fontWeight: theme.type.weight.bold,
+    fontSize: 12,
+    fontWeight: "700",
     letterSpacing: 1.4,
     textTransform: "uppercase"
   },
   title: {
-    fontSize: theme.type.size.titleLg,
-    lineHeight: theme.type.lineHeight.titleLg,
-    fontWeight: theme.type.weight.black
+    fontSize: 36,
+    lineHeight: 42,
+    fontWeight: "800"
   },
   sectionTitle: {
-    fontSize: theme.type.size.titleSm,
-    lineHeight: theme.type.lineHeight.titleSm,
-    fontWeight: theme.type.weight.bold
+    fontSize: 20,
+    lineHeight: 26,
+    fontWeight: "700"
   },
   body: {
-    fontSize: theme.type.size.body,
-    lineHeight: theme.type.lineHeight.body
+    fontSize: 16,
+    lineHeight: 24
   },
   bodySm: {
-    fontSize: theme.type.size.bodySm,
-    lineHeight: theme.type.lineHeight.bodySm
+    fontSize: 14,
+    lineHeight: 20
   },
   meta: {
-    fontSize: theme.type.size.caption,
+    fontSize: 12,
     lineHeight: 18,
-    fontWeight: theme.type.weight.semibold,
+    fontWeight: "600",
     letterSpacing: 0.6,
     textTransform: "uppercase"
   }
 });
 
-const colorStyles = StyleSheet.create({
-  primary: { color: theme.colors.text.primary },
-  secondary: { color: theme.colors.text.secondary },
-  muted: { color: theme.colors.text.muted },
-  inverse: { color: theme.colors.text.inverse },
-  accent: { color: theme.colors.text.accent },
-  success: { color: theme.colors.status.success },
-  danger: { color: theme.colors.status.error }
-});
+function createStyles(theme: Theme) {
+  return StyleSheet.create({
+    base: {
+      color: theme.colors.text.primary
+    },
+    primary: { color: theme.colors.text.primary },
+    secondary: { color: theme.colors.text.secondary },
+    muted: { color: theme.colors.text.muted },
+    inverse: { color: theme.colors.text.inverse },
+    accent: { color: theme.colors.text.accent },
+    success: { color: theme.colors.status.success },
+    danger: { color: theme.colors.status.error }
+  });
+}

@@ -1,4 +1,5 @@
 import { Link } from "expo-router";
+import { useMemo } from "react";
 import { Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 
 import { useTrips } from "../../src/providers/trips-provider";
@@ -6,10 +7,12 @@ import { AppScreen } from "../../src/ui/layout/AppScreen";
 import { AppButton } from "../../src/ui/primitives/AppButton";
 import { AppText } from "../../src/ui/primitives/AppText";
 import { SurfaceCard } from "../../src/ui/primitives/SurfaceCard";
-import { theme } from "../../src/ui/theme";
+import { Theme, useAppTheme } from "../../src/ui/theme";
 
 export default function HomeScreen() {
   const { trips, currentUser } = useTrips();
+  const { theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { width } = useWindowDimensions();
   const wide = width >= 960;
   const compact = width < 520;
@@ -113,7 +116,8 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: Theme) {
+  return StyleSheet.create({
   heroCard: {
     gap: theme.spacing.md
   },
@@ -175,4 +179,5 @@ const styles = StyleSheet.create({
   recentTripMetaCompact: {
     width: "100%"
   }
-});
+  });
+}

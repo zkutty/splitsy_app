@@ -1,16 +1,20 @@
+import { useMemo } from "react";
 import { StyleSheet, View, useWindowDimensions } from "react-native";
 
 import { useSession } from "../../src/providers/session-provider";
 import { useTrips } from "../../src/providers/trips-provider";
 import { AppScreen } from "../../src/ui/layout/AppScreen";
 import { AppButton } from "../../src/ui/primitives/AppButton";
+import { Chip } from "../../src/ui/primitives/Chip";
 import { AppText } from "../../src/ui/primitives/AppText";
 import { SurfaceCard } from "../../src/ui/primitives/SurfaceCard";
-import { theme } from "../../src/ui/theme";
+import { Theme, themeOptions, useAppTheme } from "../../src/ui/theme";
 
 export default function AccountScreen() {
   const session = useSession();
   const { currentUser, signOut } = useTrips();
+  const { theme, themeName, setThemeName } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { width } = useWindowDimensions();
   const compact = width < 520;
 
@@ -76,11 +80,29 @@ export default function AccountScreen() {
           Sign out
         </AppButton>
       </SurfaceCard>
+
+      <SurfaceCard style={styles.settingsCard}>
+        <AppText variant="sectionTitle">Appearance</AppText>
+        <AppText variant="bodySm" color="muted">
+          Theme changes apply immediately for this session.
+        </AppText>
+        <View style={styles.themeList}>
+          {themeOptions.map((option) => (
+            <View key={option.id} style={styles.themeOption}>
+              <Chip label={option.label} selected={themeName === option.id} onPress={() => setThemeName(option.id)} />
+              <AppText variant="bodySm" color="muted">
+                {option.description}
+              </AppText>
+            </View>
+          ))}
+        </View>
+      </SurfaceCard>
     </AppScreen>
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: Theme) {
+  return StyleSheet.create({
   heroCard: {
     gap: theme.spacing.md
   },
@@ -112,5 +134,15 @@ const styles = StyleSheet.create({
   },
   actionsCard: {
     gap: theme.spacing.md
+  },
+  settingsCard: {
+    gap: theme.spacing.md
+  },
+  themeList: {
+    gap: theme.spacing.md
+  },
+  themeOption: {
+    gap: theme.spacing.xs
   }
-});
+  });
+}

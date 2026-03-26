@@ -1,2 +1,3 @@
-export { theme } from "./tokens";
-export type { Theme } from "./tokens";
+export { appThemes, theme, themeOptions } from "./tokens";
+export type { Theme, ThemeName } from "./tokens";
+export { ThemeProvider, useAppTheme } from "./theme-provider";

@@ -1,4 +1,5 @@
 import { Redirect } from "expo-router";
+import { useMemo } from "react";
 import { StyleSheet, View, useWindowDimensions } from "react-native";
 
 import { useSession } from "../src/providers/session-provider";
@@ -7,10 +8,12 @@ import { BrandMark } from "../src/ui/navigation/BrandMark";
 import { AppButton } from "../src/ui/primitives/AppButton";
 import { AppText } from "../src/ui/primitives/AppText";
 import { SurfaceCard } from "../src/ui/primitives/SurfaceCard";
-import { theme } from "../src/ui/theme";
+import { Theme, useAppTheme } from "../src/ui/theme";
 
 export default function SignInScreen() {
   const { signIn, authMode, isLoading, isAuthenticated } = useSession();
+  const { theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { width } = useWindowDimensions();
   const wide = width >= 960;
   const compact = width < 768;
@@ -78,7 +81,8 @@ export default function SignInScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: Theme) {
+  return StyleSheet.create({
   layout: {
     gap: theme.spacing.xl
   },
@@ -134,4 +138,5 @@ const styles = StyleSheet.create({
     maxWidth: 420,
     justifyContent: "center"
   }
-});
+  });
+}

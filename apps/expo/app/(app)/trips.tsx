@@ -1,5 +1,5 @@
 import { Link } from "expo-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 
 import { MAJOR_CURRENCIES } from "../../src/lib/rates";
@@ -10,10 +10,12 @@ import { AppInput } from "../../src/ui/primitives/AppInput";
 import { AppText } from "../../src/ui/primitives/AppText";
 import { Chip } from "../../src/ui/primitives/Chip";
 import { SurfaceCard } from "../../src/ui/primitives/SurfaceCard";
-import { theme } from "../../src/ui/theme";
+import { Theme, useAppTheme } from "../../src/ui/theme";
 
 export default function TripsScreen() {
   const { trips, authMode, currentUser, isLoading, createTrip } = useTrips();
+  const { theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [name, setName] = useState("");
   const [destination, setDestination] = useState("");
   const [tripCurrencyCode, setTripCurrencyCode] = useState("USD");
@@ -224,7 +226,8 @@ export default function TripsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: Theme) {
+  return StyleSheet.create({
   header: {
     gap: theme.spacing.xs
   },
@@ -328,4 +331,5 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.pill,
     backgroundColor: theme.colors.accent.primary
   }
-});
+  });
+}

@@ -1,9 +1,8 @@
 import { Stack } from "expo-router";
 
 import { AppProviders } from "../src/providers/app-providers";
-import { useSession } from "../src/providers/session-provider";
 import { BrandMark } from "../src/ui/navigation/BrandMark";
-import { theme } from "../src/ui/theme";
+import { useAppTheme } from "../src/ui/theme";
 
 export default function RootLayout() {
   return (
@@ -14,7 +13,7 @@ export default function RootLayout() {
 }
 
 function RootNavigator() {
-  const session = useSession();
+  const { theme } = useAppTheme();
 
   return (
     <Stack

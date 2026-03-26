@@ -1,9 +1,9 @@
-import { PropsWithChildren } from "react";
+import { PropsWithChildren, useMemo } from "react";
 import { StyleSheet, View } from "react-native";
 
 import { AppText } from "./AppText";
 import { SurfaceCard } from "./SurfaceCard";
-import { theme } from "../theme";
+import { Theme, useAppTheme } from "../theme";
 
 type SectionCardProps = PropsWithChildren<{
   title: string;
@@ -11,6 +11,9 @@ type SectionCardProps = PropsWithChildren<{
 }>;
 
 export function SectionCard({ title, description, children }: SectionCardProps) {
+  const { theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   return (
     <SurfaceCard>
       <View style={styles.header}>
@@ -26,12 +29,14 @@ export function SectionCard({ title, description, children }: SectionCardProps) 
   );
 }
 
-const styles = StyleSheet.create({
-  header: {
-    gap: theme.spacing.xs
-  },
-  content: {
-    gap: theme.spacing.md,
-    marginTop: theme.spacing.md
-  }
-});
+function createStyles(theme: Theme) {
+  return StyleSheet.create({
+    header: {
+      gap: theme.spacing.xs
+    },
+    content: {
+      gap: theme.spacing.md,
+      marginTop: theme.spacing.md
+    }
+  });
+}

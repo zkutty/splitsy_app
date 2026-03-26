@@ -1,10 +1,11 @@
 import { Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
+import { useMemo } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useTrips } from "../../providers/trips-provider";
 import { AppButton } from "../primitives/AppButton";
 import { AppText } from "../primitives/AppText";
-import { theme } from "../theme";
+import { Theme, useAppTheme } from "../theme";
 import { BrandMark } from "./BrandMark";
 
 const LABELS: Record<string, string> = {
@@ -16,6 +17,8 @@ const LABELS: Record<string, string> = {
 type AppTabBarProps = any;
 
 export function AppTabBar({ state, navigation }: AppTabBarProps) {
+  const { theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const wide = width >= 960;
@@ -118,7 +121,8 @@ export function AppTabBar({ state, navigation }: AppTabBarProps) {
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme: Theme) {
+  return StyleSheet.create({
   webShell: {
     backgroundColor: theme.colors.background.canvas,
     borderBottomWidth: 1,
@@ -207,4 +211,5 @@ const styles = StyleSheet.create({
   mobileNavLabel: {
     fontWeight: theme.type.weight.semibold
   }
-});
+  });
+}

@@ -1,18 +1,20 @@
-import { PropsWithChildren } from "react";
+import { PropsWithChildren, useMemo } from "react";
 import { Platform, ScrollView, StyleProp, StyleSheet, View, ViewStyle, useWindowDimensions } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { theme } from "../theme";
+import { Theme, useAppTheme } from "../theme";
 
 type AppScreenProps = PropsWithChildren<{
   maxWidth?: number;
   contentStyle?: StyleProp<ViewStyle>;
 }>;
 
-export function AppScreen({ children, maxWidth = theme.layout.maxWidth, contentStyle }: AppScreenProps) {
+export function AppScreen({ children, maxWidth, contentStyle }: AppScreenProps) {
+  const { theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const contentMaxWidth = width < 768 ? theme.layout.contentWidth : maxWidth;
+  const contentMaxWidth = width < 768 ? theme.layout.contentWidth : (maxWidth ?? theme.layout.maxWidth);
 
   return (
     <SafeAreaView edges={["top", "bottom"]} style={styles.safeArea}>
@@ -33,19 +35,21 @@ export function AppScreen({ children, maxWidth = theme.layout.maxWidth, contentS
   );
 }
 
-const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: theme.colors.background.canvas
-  },
-  scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: theme.spacing.md
-  },
-  shell: {
-    width: "100%",
-    alignSelf: "center",
-    gap: theme.spacing.lg,
-    ...(Platform.OS === "web" ? { minHeight: "100%" as const } : null)
-  }
-});
+function createStyles(theme: Theme) {
+  return StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: theme.colors.background.canvas
+    },
+    scrollContent: {
+      flexGrow: 1,
+      paddingHorizontal: theme.spacing.md
+    },
+    shell: {
+      width: "100%",
+      alignSelf: "center",
+      gap: theme.spacing.lg,
+      ...(Platform.OS === "web" ? { minHeight: "100%" as const } : null)
+    }
+  });
+}

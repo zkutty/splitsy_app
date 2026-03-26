@@ -2,10 +2,11 @@ import { Redirect } from "expo-router";
 import { View } from "react-native";
 
 import { useSession } from "../src/providers/session-provider";
-import { theme } from "../src/ui/theme";
+import { useAppTheme } from "../src/ui/theme";
 
 export default function IndexScreen() {
   const { isAuthenticated, isLoading } = useSession();
+  const { theme } = useAppTheme();
 
   if (isLoading) {
     return <View style={{ flex: 1, backgroundColor: theme.colors.background.canvas }} />;
