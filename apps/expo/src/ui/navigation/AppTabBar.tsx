@@ -100,7 +100,12 @@ export function AppTabBar({ state, navigation }: AppTabBarProps) {
                   navigation.navigate(route.name, route.params);
                 }
               }}
-              style={[styles.mobileNavItem, focused ? styles.mobileNavItemActive : null]}
+              hitSlop={6}
+              style={({ pressed }) => [
+                styles.mobileNavItem,
+                focused ? styles.mobileNavItemActive : null,
+                pressed ? styles.mobileNavItemPressed : null
+              ]}
             >
               <AppText variant="bodySm" color={focused ? "inverse" : "muted"} style={styles.mobileNavLabel}>
                 {label}
@@ -195,6 +200,9 @@ const styles = StyleSheet.create({
   },
   mobileNavItemActive: {
     backgroundColor: theme.colors.accent.primary
+  },
+  mobileNavItemPressed: {
+    opacity: 0.86
   },
   mobileNavLabel: {
     fontWeight: theme.type.weight.semibold

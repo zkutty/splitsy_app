@@ -323,7 +323,7 @@ export default function TripDetailsScreen() {
             <AppText variant="eyebrow" color="accent">
               Trip Summary
             </AppText>
-            <AppText variant="title" color="inverse">
+            <AppText variant={compact ? "sectionTitle" : "title"} color="inverse">
               {trip.name}
             </AppText>
             <AppText variant="bodySm" color="accent">

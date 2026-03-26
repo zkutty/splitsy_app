@@ -189,7 +189,7 @@ export default function TripsScreen() {
       <View style={styles.tripList}>
         {trips.map((trip) => (
           <Link href={{ pathname: "/trip/[tripId]", params: { tripId: trip.id } }} key={trip.id} asChild>
-            <Pressable style={styles.linkWrapper}>
+            <Pressable style={({ pressed }) => [styles.linkWrapper, pressed ? styles.linkWrapperPressed : null]}>
               <SurfaceCard style={styles.tripCard}>
                 <View style={[styles.tripHeader, compact ? styles.tripHeaderCompact : null]}>
                   <View style={styles.tripBadge}>
@@ -306,6 +306,9 @@ const styles = StyleSheet.create({
   },
   linkWrapper: {
     borderRadius: theme.radius.xl
+  },
+  linkWrapperPressed: {
+    opacity: 0.88
   },
   tripCard: {
     gap: theme.spacing.sm

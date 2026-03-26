@@ -22,7 +22,7 @@ export default function HomeScreen() {
         <AppText variant="eyebrow" color="accent">
           Home
         </AppText>
-        <AppText variant="title" color="inverse">
+        <AppText variant={compact ? "sectionTitle" : "title"} color="inverse">
           Welcome back, {currentUser.displayName}.
         </AppText>
         <AppText variant="body" color="accent">
