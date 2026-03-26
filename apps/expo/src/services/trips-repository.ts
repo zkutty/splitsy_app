@@ -386,8 +386,6 @@ const supabaseRepository = (): TripsRepository => {
       const { data: tripRow, error: tripError } = await supabase
         .from("trips")
         .insert({
-          owner_user_id: input.owner.id,
-          created_by_user_id: input.owner.id,
           name: input.name,
           destination: input.destination ?? null,
           trip_currency_code: input.tripCurrencyCode,
