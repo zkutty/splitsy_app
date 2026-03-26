@@ -3,6 +3,7 @@ import { StyleSheet, View, useWindowDimensions } from "react-native";
 
 import { useSession } from "../src/providers/session-provider";
 import { AuthScreen } from "../src/ui/layout/AuthScreen";
+import { BrandMark } from "../src/ui/navigation/BrandMark";
 import { AppButton } from "../src/ui/primitives/AppButton";
 import { AppText } from "../src/ui/primitives/AppText";
 import { SurfaceCard } from "../src/ui/primitives/SurfaceCard";
@@ -12,6 +13,7 @@ export default function SignInScreen() {
   const { signIn, authMode, isLoading, isAuthenticated } = useSession();
   const { width } = useWindowDimensions();
   const wide = width >= 960;
+  const compact = width < 768;
 
   if (!isLoading && isAuthenticated) {
     return <Redirect href={"/home" as any} />;
@@ -21,23 +23,12 @@ export default function SignInScreen() {
     <AuthScreen>
       <View style={[styles.layout, wide ? styles.layoutWide : null]}>
         <View style={styles.brandColumn}>
-          <View style={styles.logoRow}>
-            <View style={styles.logoMark}>
-              <View style={[styles.logoStroke, styles.logoStrokeUp]} />
-              <View style={[styles.logoStroke, styles.logoStrokeDown]} />
-            </View>
-            <View style={styles.logoText}>
-              <AppText variant="meta" color="secondary">
-                SplitTrip
-              </AppText>
-              <AppText variant="bodySm" color="muted">
-                Split travel expenses without the math.
-              </AppText>
-            </View>
-          </View>
+          <BrandMark size="hero" style={styles.brandMark} />
 
           <View style={styles.heroCopy}>
-            <AppText variant="title">Travel together. Track every shared cost. Settle in one pass.</AppText>
+            <AppText variant={compact ? "sectionTitle" : "title"}>
+              Travel together. Track every shared cost. Settle in one pass.
+            </AppText>
             <AppText variant="body" color="secondary">
               Create a trip, add expenses in any currency, and let SplitTrip calculate the minimum repayments for the
               group.
@@ -66,7 +57,7 @@ export default function SignInScreen() {
           </View>
         </View>
 
-        <SurfaceCard tone="hero" style={styles.heroCard}>
+        <SurfaceCard tone="hero" style={[styles.heroCard, wide ? styles.heroCardWide : styles.heroCardCompact]}>
           <AppText variant="eyebrow" color="accent">
             Welcome to SplitTrip
           </AppText>
@@ -89,46 +80,21 @@ export default function SignInScreen() {
 
 const styles = StyleSheet.create({
   layout: {
-    gap: theme.spacing.lg
+    gap: theme.spacing.xl
   },
   layoutWide: {
     flexDirection: "row",
-    alignItems: "stretch"
+    alignItems: "center"
   },
   brandColumn: {
     flex: 1,
-    gap: theme.spacing.lg,
-    justifyContent: "center"
+    gap: theme.spacing.xl,
+    justifyContent: "flex-start",
+    maxWidth: 560
   },
-  logoRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing.md
-  },
-  logoMark: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: theme.colors.accent.primary,
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  logoStroke: {
-    position: "absolute",
-    width: 18,
-    height: 18,
-    borderTopWidth: 3,
-    borderRightWidth: 3,
-    borderColor: theme.colors.text.inverse
-  },
-  logoStrokeUp: {
-    transform: [{ rotate: "-45deg" }, { translateY: -6 }]
-  },
-  logoStrokeDown: {
-    transform: [{ rotate: "135deg" }, { translateY: -6 }]
-  },
-  logoText: {
-    gap: theme.spacing.xxs
+  brandMark: {
+    alignSelf: "flex-start",
+    marginTop: theme.spacing.xs
   },
   heroCopy: {
     gap: theme.spacing.md
@@ -156,9 +122,16 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.accent.purple
   },
   heroCard: {
-    flex: 1,
-    minHeight: 360,
-    justifyContent: "center",
+    width: "100%",
     gap: theme.spacing.md
+  },
+  heroCardCompact: {
+    minHeight: 0,
+    alignSelf: "stretch"
+  },
+  heroCardWide: {
+    minHeight: 360,
+    maxWidth: 420,
+    justifyContent: "center"
   }
 });

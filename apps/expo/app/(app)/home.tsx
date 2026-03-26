@@ -12,6 +12,7 @@ export default function HomeScreen() {
   const { trips, currentUser } = useTrips();
   const { width } = useWindowDimensions();
   const wide = width >= 960;
+  const compact = width < 520;
   const recentTrips = trips.slice(0, 3);
   const activeTripCount = trips.filter((trip) => (trip.status ?? "active") === "active").length;
 
@@ -30,12 +31,12 @@ export default function HomeScreen() {
         </AppText>
         <View style={styles.heroActions}>
           <Link href="/trips" asChild>
-            <Pressable>
+            <Pressable style={({ pressed }) => (pressed ? styles.inlineActionPressed : null)}>
               <AppButton fullWidth={false}>Open trips</AppButton>
             </Pressable>
           </Link>
           <Link href={"/account" as any} asChild>
-            <Pressable>
+            <Pressable style={({ pressed }) => (pressed ? styles.inlineActionPressed : null)}>
               <AppButton variant="secondary" fullWidth={false}>
                 View account
               </AppButton>
@@ -80,7 +81,13 @@ export default function HomeScreen() {
           {recentTrips.length ? (
             recentTrips.map((trip) => (
               <Link href={{ pathname: "/trip/[tripId]", params: { tripId: trip.id } }} key={trip.id} asChild>
-                <Pressable style={styles.recentTrip}>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.recentTrip,
+                    compact ? styles.recentTripCompact : null,
+                    pressed ? styles.recentTripPressed : null
+                  ]}
+                >
                   <View style={styles.recentTripCopy}>
                     <AppText variant="bodySm" color="secondary" style={styles.recentTripTitle}>
                       {trip.name}
@@ -89,7 +96,7 @@ export default function HomeScreen() {
                       {trip.destination ?? "Destination coming soon"} · {trip.tripCurrencyCode} · {trip.status ?? "active"}
                     </AppText>
                   </View>
-                  <AppText variant="bodySm" color="muted">
+                  <AppText variant="bodySm" color="muted" style={compact ? styles.recentTripMetaCompact : null}>
                     {trip.members.length} members
                   </AppText>
                 </Pressable>
@@ -109,6 +116,9 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   heroCard: {
     gap: theme.spacing.md
+  },
+  inlineActionPressed: {
+    opacity: 0.92
   },
   heroActions: {
     flexDirection: "row",
@@ -142,9 +152,18 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: theme.spacing.md,
     alignItems: "center",
+    minHeight: 68,
+    paddingHorizontal: theme.spacing.sm,
     paddingVertical: theme.spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border.subtle
+    borderRadius: theme.radius.lg,
+    backgroundColor: theme.colors.surface.muted
+  },
+  recentTripCompact: {
+    alignItems: "flex-start",
+    flexWrap: "wrap"
+  },
+  recentTripPressed: {
+    opacity: 0.9
   },
   recentTripCopy: {
     flex: 1,
@@ -152,5 +171,8 @@ const styles = StyleSheet.create({
   },
   recentTripTitle: {
     fontWeight: theme.type.weight.semibold
+  },
+  recentTripMetaCompact: {
+    width: "100%"
   }
 });

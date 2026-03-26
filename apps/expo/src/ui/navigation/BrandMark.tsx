@@ -5,22 +5,49 @@ import { theme } from "../theme";
 
 type BrandMarkProps = {
   compact?: boolean;
+  size?: "compact" | "default" | "hero";
   style?: StyleProp<ViewStyle>;
 };
 
-export function BrandMark({ compact = false, style }: BrandMarkProps) {
+export function BrandMark({ compact = false, size = "default", style }: BrandMarkProps) {
+  const resolvedSize = compact ? "compact" : size;
+
   return (
-    <View style={[styles.brandTitle, style]}>
-      <View style={[styles.logoMark, compact ? styles.logoMarkCompact : null]}>
-        <View style={[styles.logoStroke, compact ? styles.logoStrokeCompact : null, styles.logoStrokeUp]} />
-        <View style={[styles.logoStroke, compact ? styles.logoStrokeCompact : null, styles.logoStrokeDown]} />
+    <View style={[styles.brandTitle, resolvedSize === "hero" ? styles.brandTitleHero : null, style]}>
+      <View
+        style={[
+          styles.logoMark,
+          resolvedSize === "compact" ? styles.logoMarkCompact : null,
+          resolvedSize === "hero" ? styles.logoMarkHero : null
+        ]}
+      >
+        <View
+          style={[
+            styles.logoStroke,
+            resolvedSize === "compact" ? styles.logoStrokeCompact : null,
+            resolvedSize === "hero" ? styles.logoStrokeHero : null,
+            styles.logoStrokeUp
+          ]}
+        />
+        <View
+          style={[
+            styles.logoStroke,
+            resolvedSize === "compact" ? styles.logoStrokeCompact : null,
+            resolvedSize === "hero" ? styles.logoStrokeHero : null,
+            styles.logoStrokeDown
+          ]}
+        />
       </View>
       <View style={styles.brandCopy}>
-        <AppText variant="meta" color="secondary">
+        <AppText
+          variant={resolvedSize === "hero" ? "sectionTitle" : "meta"}
+          color="secondary"
+          style={resolvedSize === "hero" ? styles.brandNameHero : null}
+        >
           SplitTrip
         </AppText>
-        <AppText variant="bodySm" color="muted">
-          Travel expenses
+        <AppText variant="bodySm" color="muted" style={resolvedSize === "hero" ? styles.brandTaglineHero : null}>
+          {resolvedSize === "hero" ? "Split travel expenses without the math." : "Travel expenses"}
         </AppText>
       </View>
     </View>
@@ -33,18 +60,28 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: theme.spacing.sm
   },
+  brandTitleHero: {
+    alignItems: "flex-start",
+    gap: theme.spacing.md
+  },
   logoMark: {
     width: 34,
     height: 34,
     borderRadius: 17,
     backgroundColor: theme.colors.accent.primary,
     alignItems: "center",
-    justifyContent: "center"
+    justifyContent: "center",
+    overflow: "visible"
   },
   logoMarkCompact: {
     width: 30,
     height: 30,
     borderRadius: 15
+  },
+  logoMarkHero: {
+    width: 64,
+    height: 64,
+    borderRadius: 32
   },
   logoStroke: {
     position: "absolute",
@@ -59,6 +96,12 @@ const styles = StyleSheet.create({
     height: 10,
     borderTopWidth: 2
   },
+  logoStrokeHero: {
+    width: 20,
+    height: 20,
+    borderTopWidth: 3,
+    borderRightWidth: 3
+  },
   logoStrokeUp: {
     transform: [{ rotate: "-45deg" }, { translateY: -4 }]
   },
@@ -67,5 +110,13 @@ const styles = StyleSheet.create({
   },
   brandCopy: {
     gap: 2
+  },
+  brandNameHero: {
+    fontSize: theme.type.size.titleSm,
+    lineHeight: theme.type.lineHeight.titleSm,
+    letterSpacing: 0
+  },
+  brandTaglineHero: {
+    maxWidth: 220
   }
 });

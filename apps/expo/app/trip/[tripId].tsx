@@ -48,6 +48,7 @@ export default function TripDetailsScreen() {
   const persistedTransfers = getSettlementTransfersForTrip(tripId);
   const { width } = useWindowDimensions();
   const wide = width >= 1040;
+  const compact = width < 768;
 
   const [amount, setAmount] = useState("");
   const [expenseDate, setExpenseDate] = useState(new Date().toISOString().slice(0, 10));
@@ -477,7 +478,7 @@ export default function TripDetailsScreen() {
               </SurfaceCard>
             ) : null}
 
-            <View style={styles.actionRow}>
+            <View style={[styles.actionRow, compact ? styles.actionRowCompact : null]}>
               <AppButton onPress={submitExpense} disabled={isSavingExpense || !isTripActive}>
                 {isSavingExpense ? "Saving..." : editingExpenseId ? "Save changes" : "Save expense"}
               </AppButton>
@@ -495,7 +496,7 @@ export default function TripDetailsScreen() {
           >
             {expenses.length ? (
               expenses.map((expense) => (
-                <View key={expense.id} style={styles.rowCard}>
+                <View key={expense.id} style={[styles.rowCard, compact ? styles.rowCardCompact : null]}>
                   <View style={styles.rowCopy}>
                     <AppText variant="bodySm" color="secondary" style={styles.rowTitle}>
                       {expense.note || expense.category}
@@ -512,12 +513,12 @@ export default function TripDetailsScreen() {
                       {trip.members.find((member) => member.userId === expense.createdByUserId)?.displayName ?? "Unknown"}
                     </AppText>
                   </View>
-                  <View style={styles.expenseMeta}>
+                  <View style={[styles.expenseMeta, compact ? styles.expenseMetaCompact : null]}>
                     <AppText variant="bodySm" color="muted">
                       {expense.involvedMemberIds.length} people
                     </AppText>
                     {canEditExpense(expense.id) ? (
-                      <View style={styles.expenseActions}>
+                      <View style={[styles.expenseActions, compact ? styles.expenseActionsCompact : null]}>
                         <AppButton onPress={() => startEditingExpense(expense)} variant="secondary" fullWidth={false}>
                           Edit
                         </AppButton>
@@ -547,7 +548,7 @@ export default function TripDetailsScreen() {
               const member = trip.members.find((item) => item.id === balance.memberId);
 
               return (
-                <View key={balance.memberId} style={styles.rowCard}>
+                <View key={balance.memberId} style={[styles.rowCard, compact ? styles.rowCardCompact : null]}>
                   <View style={styles.rowCopy}>
                     <AppText variant="bodySm" color="secondary" style={styles.rowTitle}>
                       {member?.displayName ?? balance.memberId}
@@ -577,7 +578,7 @@ export default function TripDetailsScreen() {
                   const to = trip.members.find((member) => member.id === transfer.toMemberId);
 
                   return (
-                    <View key={`${transfer.fromMemberId}-${transfer.toMemberId}`} style={styles.rowCard}>
+                    <View key={`${transfer.fromMemberId}-${transfer.toMemberId}`} style={[styles.rowCard, compact ? styles.rowCardCompact : null]}>
                       <View style={styles.rowCopy}>
                         <AppText variant="bodySm" color="secondary" style={styles.rowTitle}>
                           {from?.displayName} pays {to?.displayName}
@@ -603,7 +604,7 @@ export default function TripDetailsScreen() {
                   const to = trip.members.find((member) => member.id === transfer.toMemberId);
 
                   return (
-                    <View key={transfer.id} style={styles.rowCard}>
+                    <View key={transfer.id} style={[styles.rowCard, compact ? styles.rowCardCompact : null]}>
                       <View style={styles.rowCopy}>
                         <AppText variant="bodySm" color="secondary" style={styles.rowTitle}>
                           {from?.displayName} pays {to?.displayName}
@@ -612,7 +613,7 @@ export default function TripDetailsScreen() {
                           Status: {transfer.status}
                         </AppText>
                       </View>
-                      <View style={styles.expenseMeta}>
+                      <View style={[styles.expenseMeta, compact ? styles.expenseMetaCompact : null]}>
                         <AppText variant="bodySm" color="primary" style={styles.netAmount}>
                           {formatCurrency(transfer.amount, transfer.currencyCode)}
                         </AppText>
@@ -716,6 +717,9 @@ const styles = StyleSheet.create({
   actionRow: {
     gap: theme.spacing.sm
   },
+  actionRowCompact: {
+    alignItems: "stretch"
+  },
   rowCard: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -729,6 +733,9 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: theme.spacing.xxs
   },
+  rowCardCompact: {
+    flexDirection: "column"
+  },
   rowTitle: {
     fontWeight: theme.type.weight.semibold
   },
@@ -739,8 +746,16 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     gap: theme.spacing.sm
   },
+  expenseMetaCompact: {
+    width: "100%",
+    alignItems: "flex-start"
+  },
   expenseActions: {
     flexDirection: "row",
     gap: theme.spacing.xs
+  },
+  expenseActionsCompact: {
+    flexWrap: "wrap",
+    justifyContent: "flex-start"
   }
 });

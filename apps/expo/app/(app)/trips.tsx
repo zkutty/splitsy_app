@@ -23,6 +23,7 @@ export default function TripsScreen() {
   const [createTripError, setCreateTripError] = useState<string | null>(null);
   const { width } = useWindowDimensions();
   const wide = width >= 960;
+  const compact = width < 768;
 
   const getErrorMessage = (error: unknown) => {
     if (error instanceof Error) {
@@ -133,7 +134,7 @@ export default function TripsScreen() {
           <AppText variant="bodySm" color="secondary">
             Capture trip details once, then keep members, expenses, and settlements aligned in a single workspace.
           </AppText>
-          <View style={styles.identityCard}>
+          <View style={[styles.identityCard, compact ? styles.identityCardCompact : null]}>
             <View style={styles.identityCopy}>
               <AppText variant="meta" color="muted">
                 Workspace owner
@@ -151,7 +152,7 @@ export default function TripsScreen() {
               </AppText>
             </View>
           </View>
-          <View style={styles.statRow}>
+          <View style={[styles.statRow, compact ? styles.statRowCompact : null]}>
             <View style={styles.statCard}>
               <AppText variant="meta" color="muted">
                 Trips
@@ -190,7 +191,7 @@ export default function TripsScreen() {
           <Link href={{ pathname: "/trip/[tripId]", params: { tripId: trip.id } }} key={trip.id} asChild>
             <Pressable style={styles.linkWrapper}>
               <SurfaceCard style={styles.tripCard}>
-                <View style={styles.tripHeader}>
+                <View style={[styles.tripHeader, compact ? styles.tripHeaderCompact : null]}>
                   <View style={styles.tripBadge}>
                     <AppText variant="meta" color="inverse">
                       Trip
@@ -252,6 +253,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.border.subtle
   },
+  identityCardCompact: {
+    alignItems: "flex-start"
+  },
   identityCopy: {
     flex: 1,
     gap: theme.spacing.xxs
@@ -282,6 +286,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: theme.spacing.md
   },
+  statRowCompact: {
+    flexDirection: "column"
+  },
   statCard: {
     flex: 1,
     gap: theme.spacing.xs,
@@ -307,6 +314,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center"
+  },
+  tripHeaderCompact: {
+    flexWrap: "wrap",
+    gap: theme.spacing.sm
   },
   tripBadge: {
     paddingHorizontal: theme.spacing.sm,

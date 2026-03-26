@@ -25,7 +25,7 @@ export function Chip({ label, selected = false, onPress, tone = "default", style
   }
 
   return (
-    <Pressable hitSlop={6} onPress={onPress}>
+    <Pressable hitSlop={6} onPress={onPress} style={({ pressed }) => (pressed ? styles.pressablePressed : null)}>
       {content}
     </Pressable>
   );
@@ -33,7 +33,7 @@ export function Chip({ label, selected = false, onPress, tone = "default", style
 
 const styles = StyleSheet.create({
   base: {
-    minHeight: 40,
+    minHeight: 44,
     paddingHorizontal: theme.spacing.md,
     paddingVertical: 10,
     borderRadius: theme.radius.pill,
@@ -48,6 +48,9 @@ const styles = StyleSheet.create({
   success: {
     backgroundColor: "#ECFDF5",
     borderColor: "#A7F3D0"
+  },
+  pressablePressed: {
+    opacity: 0.9
   },
   label: {
     fontWeight: theme.type.weight.semibold

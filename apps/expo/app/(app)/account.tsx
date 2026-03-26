@@ -1,4 +1,4 @@
-import { StyleSheet, View } from "react-native";
+import { StyleSheet, View, useWindowDimensions } from "react-native";
 
 import { useSession } from "../../src/providers/session-provider";
 import { useTrips } from "../../src/providers/trips-provider";
@@ -11,6 +11,8 @@ import { theme } from "../../src/ui/theme";
 export default function AccountScreen() {
   const session = useSession();
   const { currentUser, signOut } = useTrips();
+  const { width } = useWindowDimensions();
+  const compact = width < 520;
 
   return (
     <AppScreen maxWidth={880}>
@@ -18,7 +20,7 @@ export default function AccountScreen() {
         <AppText variant="eyebrow" color="accent">
           Account
         </AppText>
-        <AppText variant="title" color="inverse">
+        <AppText variant={compact ? "sectionTitle" : "title"} color="inverse">
           Your SplitTrip profile
         </AppText>
         <AppText variant="bodySm" color="accent">
@@ -26,7 +28,7 @@ export default function AccountScreen() {
         </AppText>
       </SurfaceCard>
 
-      <SurfaceCard style={styles.profileCard}>
+      <SurfaceCard style={[styles.profileCard, compact ? styles.profileCardCompact : null]}>
         <View style={styles.avatar}>
           <AppText variant="sectionTitle" color="inverse">
             {(currentUser.displayName || "T").slice(0, 1).toUpperCase()}
@@ -86,6 +88,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing.md
+  },
+  profileCardCompact: {
+    flexDirection: "column",
+    alignItems: "flex-start"
   },
   avatar: {
     width: 68,

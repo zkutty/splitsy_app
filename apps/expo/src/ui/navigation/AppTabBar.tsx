@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useTrips } from "../../providers/trips-provider";
 import { AppButton } from "../primitives/AppButton";
@@ -16,6 +17,7 @@ type AppTabBarProps = any;
 
 export function AppTabBar({ state, navigation }: AppTabBarProps) {
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const wide = width >= 960;
   const { currentUser, signOut } = useTrips();
 
@@ -78,7 +80,7 @@ export function AppTabBar({ state, navigation }: AppTabBarProps) {
   }
 
   return (
-    <View style={styles.mobileShell}>
+    <View style={[styles.mobileShell, { paddingBottom: Math.max(theme.spacing.sm, insets.bottom) }]}>
       <View style={styles.mobileNav}>
         {state.routes.map((route: { key: string; name: string; params?: object }, index: number) => {
           const focused = state.index === index;
@@ -174,7 +176,11 @@ const styles = StyleSheet.create({
     borderTopColor: theme.colors.border.subtle,
     paddingHorizontal: theme.spacing.md,
     paddingTop: theme.spacing.sm,
-    paddingBottom: theme.spacing.sm
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: -4 },
+    elevation: 8
   },
   mobileNav: {
     flexDirection: "row",

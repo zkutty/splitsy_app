@@ -24,6 +24,7 @@ export function AppButton({
     <Pressable
       onPress={onPress}
       disabled={disabled}
+      hitSlop={4}
       style={({ pressed, hovered }) => [
         styles.base,
         variantStyles[variant],
@@ -57,7 +58,8 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start"
   },
   interactive: {
-    opacity: 0.92
+    opacity: 0.9,
+    transform: [{ scale: 0.99 }]
   },
   disabled: {
     opacity: 0.6
