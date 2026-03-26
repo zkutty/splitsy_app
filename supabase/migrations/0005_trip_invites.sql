@@ -46,7 +46,7 @@ begin
     raise exception 'Invite links can only be created for active trips.';
   end if;
 
-  invite_token := encode(gen_random_bytes(16), 'hex');
+  invite_token := replace(gen_random_uuid()::text, '-', '');
 
   insert into public.trip_invites (
     trip_id,
