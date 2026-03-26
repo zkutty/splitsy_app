@@ -1,0 +1,21 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+
+  <!-- background -->
+  <rect width="512" height="512" rx="110" fill="#2563EB"/>
+
+  <!-- split arrows -->
+  <path d="M170 260 L256 170 L342 260" 
+        stroke="white" 
+        stroke-width="28" 
+        stroke-linecap="round" 
+        stroke-linejoin="round"
+        fill="none"/>
+
+  <path d="M170 260 L256 350 L342 260" 
+        stroke="white" 
+        stroke-width="28" 
+        stroke-linecap="round" 
+        stroke-linejoin="round"
+        fill="none"/>
+
+</svg>

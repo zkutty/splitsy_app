@@ -1,8 +1,9 @@
-import { Link } from "expo-router";
+import { Link, Redirect } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 
 import { MAJOR_CURRENCIES } from "../src/lib/rates";
+import { useSession } from "../src/providers/session-provider";
 import { useTrips } from "../src/providers/trips-provider";
 import { AppScreen } from "../src/ui/layout/AppScreen";
 import { AppButton } from "../src/ui/primitives/AppButton";
@@ -13,6 +14,7 @@ import { SurfaceCard } from "../src/ui/primitives/SurfaceCard";
 import { theme } from "../src/ui/theme";
 
 export default function TripsScreen() {
+  const session = useSession();
   const { trips, signOut, authMode, currentUser, isLoading, createTrip } = useTrips();
   const [name, setName] = useState("");
   const [destination, setDestination] = useState("");
@@ -33,6 +35,10 @@ export default function TripsScreen() {
 
     return "Unable to create trip.";
   };
+
+  if (!session.isLoading && !session.isAuthenticated) {
+    return <Redirect href="/sign-in" />;
+  }
 
   return (
     <AppScreen>
