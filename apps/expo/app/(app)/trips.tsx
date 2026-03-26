@@ -1,21 +1,19 @@
-import { Link, Redirect } from "expo-router";
+import { Link } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 
-import { MAJOR_CURRENCIES } from "../src/lib/rates";
-import { useSession } from "../src/providers/session-provider";
-import { useTrips } from "../src/providers/trips-provider";
-import { AppScreen } from "../src/ui/layout/AppScreen";
-import { AppButton } from "../src/ui/primitives/AppButton";
-import { AppInput } from "../src/ui/primitives/AppInput";
-import { AppText } from "../src/ui/primitives/AppText";
-import { Chip } from "../src/ui/primitives/Chip";
-import { SurfaceCard } from "../src/ui/primitives/SurfaceCard";
-import { theme } from "../src/ui/theme";
+import { MAJOR_CURRENCIES } from "../../src/lib/rates";
+import { useTrips } from "../../src/providers/trips-provider";
+import { AppScreen } from "../../src/ui/layout/AppScreen";
+import { AppButton } from "../../src/ui/primitives/AppButton";
+import { AppInput } from "../../src/ui/primitives/AppInput";
+import { AppText } from "../../src/ui/primitives/AppText";
+import { Chip } from "../../src/ui/primitives/Chip";
+import { SurfaceCard } from "../../src/ui/primitives/SurfaceCard";
+import { theme } from "../../src/ui/theme";
 
 export default function TripsScreen() {
-  const session = useSession();
-  const { trips, signOut, authMode, currentUser, isLoading, createTrip } = useTrips();
+  const { trips, authMode, currentUser, isLoading, createTrip } = useTrips();
   const [name, setName] = useState("");
   const [destination, setDestination] = useState("");
   const [tripCurrencyCode, setTripCurrencyCode] = useState("USD");
@@ -38,32 +36,25 @@ export default function TripsScreen() {
     return "Unable to create trip.";
   };
 
-  if (!session.isLoading && !session.isAuthenticated) {
-    return <Redirect href="/sign-in" />;
-  }
-
   return (
     <AppScreen>
-      <View style={[styles.header, wide ? styles.headerWide : null]}>
-        <View style={styles.headerCopy}>
-          <AppText variant="meta" color="secondary">
-            Workspace
-          </AppText>
-          <AppText variant="title">Trips</AppText>
-          <AppText variant="bodySm" color="muted">
-            {authMode === "supabase" ? "Persisted via Supabase" : "Running on demo fixtures until env is configured"}
-          </AppText>
-        </View>
-        <AppButton onPress={signOut} variant="secondary" fullWidth={!wide} style={wide ? styles.signOutButton : undefined}>
-          Sign out
-        </AppButton>
+      <View style={styles.header}>
+        <AppText variant="meta" color="secondary">
+          Workspace
+        </AppText>
+        <AppText variant="title">Trips</AppText>
+        <AppText variant="bodySm" color="muted">
+          {authMode === "supabase"
+            ? "Your trip workspaces are synced to Supabase."
+            : "The app is running in demo mode until cloud auth is configured."}
+        </AppText>
       </View>
 
       <View style={[styles.topGrid, wide ? styles.topGridWide : null]}>
         <SurfaceCard style={styles.createCard}>
           <AppText variant="sectionTitle">Start a trip</AppText>
           <AppText variant="bodySm" color="muted">
-            Invite friends, track shared costs, and keep balances consistent across currencies.
+            Create the workspace first, then invite members and begin logging expenses.
           </AppText>
           <AppInput label="Trip name" value={name} onChangeText={setName} placeholder="Summer in Lisbon" />
           <AppInput label="Destination" value={destination} onChangeText={setDestination} placeholder="Lisbon" />
@@ -96,7 +87,7 @@ export default function TripsScreen() {
               ))}
             </View>
             <AppText variant="bodySm" color="muted">
-              Use the settlement currency for the trip.
+              This is the currency used for balances and settlement.
             </AppText>
           </View>
           {createTripError ? (
@@ -138,27 +129,21 @@ export default function TripsScreen() {
           <AppText variant="eyebrow" color="secondary">
             SplitTrip
           </AppText>
-          <AppText variant="sectionTitle">Split travel expenses without the math.</AppText>
+          <AppText variant="sectionTitle">Organize travel spending without hunting through messages.</AppText>
           <AppText variant="bodySm" color="secondary">
-            Keep receipts, balances, and settlements in one place instead of a shared spreadsheet.
+            Capture trip details once, then keep members, expenses, and settlements aligned in a single workspace.
           </AppText>
           <View style={styles.identityCard}>
             <View style={styles.identityCopy}>
               <AppText variant="meta" color="muted">
-                Signed in as
+                Workspace owner
               </AppText>
               <AppText variant="bodySm" color="secondary" style={styles.identityName}>
-                {currentUser.displayName || "Traveler"}
+                {currentUser.displayName}
               </AppText>
-              {currentUser.email ? (
-                <AppText variant="bodySm" color="muted">
-                  {currentUser.email}
-                </AppText>
-              ) : (
-                <AppText variant="bodySm" color="muted">
-                  Demo workspace
-                </AppText>
-              )}
+              <AppText variant="bodySm" color="muted">
+                {currentUser.email ?? "Email unavailable"}
+              </AppText>
             </View>
             <View style={styles.identityAvatar}>
               <AppText variant="bodySm" color="inverse" style={styles.identityAvatarText}>
@@ -175,7 +160,7 @@ export default function TripsScreen() {
             </View>
             <View style={styles.statCard}>
               <AppText variant="meta" color="muted">
-                Mode
+                Account
               </AppText>
               <AppText variant="sectionTitle">{authMode === "supabase" ? "Cloud" : "Demo"}</AppText>
             </View>
@@ -239,18 +224,7 @@ export default function TripsScreen() {
 
 const styles = StyleSheet.create({
   header: {
-    gap: theme.spacing.md
-  },
-  headerWide: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end"
-  },
-  headerCopy: {
     gap: theme.spacing.xs
-  },
-  signOutButton: {
-    minWidth: 120
   },
   topGrid: {
     gap: theme.spacing.md

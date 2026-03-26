@@ -12,7 +12,7 @@ export default function IndexScreen() {
   }
 
   if (isAuthenticated) {
-    return <Redirect href="/trips" />;
+    return <Redirect href={"/home" as any} />;
   }
 
   return <Redirect href="/sign-in" />;

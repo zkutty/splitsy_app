@@ -1,3 +1,4 @@
+import { Redirect } from "expo-router";
 import { StyleSheet, View, useWindowDimensions } from "react-native";
 
 import { useSession } from "../src/providers/session-provider";
@@ -8,9 +9,13 @@ import { SurfaceCard } from "../src/ui/primitives/SurfaceCard";
 import { theme } from "../src/ui/theme";
 
 export default function SignInScreen() {
-  const { signIn, authMode, isLoading } = useSession();
+  const { signIn, authMode, isLoading, isAuthenticated } = useSession();
   const { width } = useWindowDimensions();
   const wide = width >= 960;
+
+  if (!isLoading && isAuthenticated) {
+    return <Redirect href={"/home" as any} />;
+  }
 
   return (
     <AuthScreen>

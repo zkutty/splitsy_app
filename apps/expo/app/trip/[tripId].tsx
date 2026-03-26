@@ -1,4 +1,4 @@
-import { useLocalSearchParams } from "expo-router";
+import { Redirect, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View, useWindowDimensions } from "react-native";
 
@@ -7,6 +7,7 @@ import type { Expense } from "@splitsy/domain";
 
 import { formatCurrency } from "../../src/lib/format";
 import { getConversionRate, MAJOR_CURRENCIES } from "../../src/lib/rates";
+import { useSession } from "../../src/providers/session-provider";
 import { useTrips } from "../../src/providers/trips-provider";
 import { AppScreen } from "../../src/ui/layout/AppScreen";
 import { AppButton } from "../../src/ui/primitives/AppButton";
@@ -19,6 +20,7 @@ import { theme } from "../../src/ui/theme";
 
 export default function TripDetailsScreen() {
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
+  const session = useSession();
   const {
     getTripById,
     getCurrentMemberForTrip,
@@ -92,6 +94,10 @@ export default function TripDetailsScreen() {
   }, [expenses, trip]);
 
   const tripCreator = trip?.members.find((member) => member.userId === trip.createdByUserId);
+
+  if (!session.isLoading && !session.isAuthenticated) {
+    return <Redirect href="/sign-in" />;
+  }
 
   if (isLoading) {
     return (
