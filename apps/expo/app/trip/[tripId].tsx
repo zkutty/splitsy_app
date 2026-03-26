@@ -342,44 +342,50 @@ export default function TripDetailsScreen() {
       const token = await createTripInviteLink(trip.id);
       const nextInviteLink = buildInviteUrl(token);
       setInviteLink(nextInviteLink);
-
-      if (
-        Platform.OS === "web" &&
-        typeof navigator !== "undefined" &&
-        navigator.clipboard &&
-        typeof navigator.clipboard.writeText === "function"
-      ) {
-        await navigator.clipboard.writeText(nextInviteLink);
-        setInviteFeedback("Invite link copied to clipboard.");
-      } else {
-        setInviteFeedback("Invite link ready to share.");
-      }
+      setInviteFeedback("Invite link ready.");
 
       return nextInviteLink;
     } catch (error) {
-      setInviteError(error instanceof Error ? error.message : "Unable to create an invite link.");
+      if (error instanceof Error) {
+        setInviteError(error.message);
+      } else if (error && typeof error === "object" && "message" in error && typeof error.message === "string") {
+        setInviteError(error.message);
+      } else {
+        setInviteError("Unable to create an invite link.");
+      }
       return null;
     } finally {
       setIsCreatingInvite(false);
     }
   };
 
-  const generateInviteLink = async (): Promise<void> => {
-    await createInviteLinkValue();
-  };
-
-  const shareInviteLink = async (): Promise<void> => {
+  const inviteTrip = async (): Promise<void> => {
     const link = inviteLink || (await createInviteLinkValue());
 
     if (!link) {
       return;
     }
 
+    if (
+      Platform.OS === "web" &&
+      typeof navigator !== "undefined" &&
+      navigator.clipboard &&
+      typeof navigator.clipboard.writeText === "function"
+    ) {
+      try {
+        await navigator.clipboard.writeText(link);
+        setInviteFeedback("Invite link copied to clipboard.");
+        return;
+      } catch {
+        setInviteFeedback("Invite link created. Copy it from the field below.");
+        return;
+      }
+    }
+
     await Share.share({
       message: `Join my SplitTrip workspace: ${link}`,
       url: link
     });
-
   };
 
   return (
@@ -710,11 +716,8 @@ export default function TripDetailsScreen() {
             {mayManageTrip && isTripActive ? (
               <View style={styles.group}>
                 <View style={[styles.actionRow, compact ? styles.actionRowCompact : null]}>
-                  <AppButton onPress={generateInviteLink} disabled={isCreatingInvite} variant="secondary">
-                    {isCreatingInvite ? "Creating link..." : "Create invite link"}
-                  </AppButton>
-                  <AppButton onPress={shareInviteLink} disabled={isCreatingInvite} variant="secondary">
-                    Share link
+                  <AppButton onPress={inviteTrip} disabled={isCreatingInvite} variant="secondary">
+                    {isCreatingInvite ? "Creating link..." : "Invite"}
                   </AppButton>
                 </View>
                 {inviteLink ? (
