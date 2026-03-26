@@ -137,12 +137,17 @@ const supabaseRepository = (): TripsRepository => {
 
   return {
     ensureProfile: async (profile) => {
-      const { error } = await supabase.from("users").upsert({
-        id: profile.id,
-        email: profile.email ?? null,
-        display_name: profile.displayName,
-        avatar_url: profile.avatarUrl ?? null
-      });
+      const { error } = await supabase.from("users").upsert(
+        {
+          id: profile.id,
+          email: profile.email ?? null,
+          display_name: profile.displayName,
+          avatar_url: profile.avatarUrl ?? null
+        },
+        {
+          onConflict: "id"
+        }
+      );
 
       if (error) {
         throw error;
@@ -298,12 +303,17 @@ const supabaseRepository = (): TripsRepository => {
       }
     },
     createTrip: async (input) => {
-      const { error: profileError } = await supabase.from("users").upsert({
-        id: input.owner.id,
-        email: input.owner.email ?? null,
-        display_name: input.owner.displayName,
-        avatar_url: input.owner.avatarUrl ?? null
-      });
+      const { error: profileError } = await supabase.from("users").upsert(
+        {
+          id: input.owner.id,
+          email: input.owner.email ?? null,
+          display_name: input.owner.displayName,
+          avatar_url: input.owner.avatarUrl ?? null
+        },
+        {
+          onConflict: "id"
+        }
+      );
 
       if (profileError) {
         throw profileError;
@@ -358,12 +368,17 @@ const supabaseRepository = (): TripsRepository => {
     },
     addTripMember: async (tripId, member) => {
       if (isUuid(member.id)) {
-        const { error: profileError } = await supabase.from("users").upsert({
-          id: member.id,
-          email: member.email ?? null,
-          display_name: member.displayName,
-          avatar_url: member.avatarUrl ?? null
-        });
+        const { error: profileError } = await supabase.from("users").upsert(
+          {
+            id: member.id,
+            email: member.email ?? null,
+            display_name: member.displayName,
+            avatar_url: member.avatarUrl ?? null
+          },
+          {
+            onConflict: "id"
+          }
+        );
 
         if (profileError) {
           throw profileError;
