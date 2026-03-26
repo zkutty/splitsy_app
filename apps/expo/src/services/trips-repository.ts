@@ -11,6 +11,8 @@ export type AddExpenseInput = ExpenseDraft & {
 export type TripsRepository = {
   ensureProfile: (profile: UserProfile) => Promise<void>;
   claimMembershipsForCurrentUser: () => Promise<void>;
+  createTripInvite: (tripId: string) => Promise<string>;
+  acceptTripInvite: (token: string) => Promise<string>;
   listTrips: () => Promise<Trip[]>;
   listExpenses: (tripId: string) => Promise<Expense[]>;
   listSettlementTransfers: (tripId: string) => Promise<TripSettlementTransfer[]>;
@@ -38,10 +40,44 @@ const demoRepository = (): TripsRepository => {
   let trips = [SAMPLE_TRIP];
   let expenses = [...SAMPLE_EXPENSES];
   let settlementTransfers: TripSettlementTransfer[] = [];
+  const invites = new Map<string, string>();
 
   return {
     ensureProfile: async () => undefined,
     claimMembershipsForCurrentUser: async () => undefined,
+    createTripInvite: async (tripId) => {
+      const token = `demo_invite_${tripId}_${Date.now()}`;
+      invites.set(token, tripId);
+      return token;
+    },
+    acceptTripInvite: async (token) => {
+      const tripId = invites.get(token);
+
+      if (!tripId) {
+        throw new Error("Invite link is invalid or has expired.");
+      }
+
+      trips = trips.map((trip) =>
+        trip.id === tripId && !trip.members.some((member) => member.userId === SAMPLE_USER.id)
+          ? {
+              ...trip,
+              members: [
+                ...trip.members,
+                {
+                  id: SAMPLE_USER.id,
+                  userId: SAMPLE_USER.id,
+                  email: SAMPLE_USER.email ?? null,
+                  displayName: SAMPLE_USER.displayName,
+                  avatarUrl: SAMPLE_USER.avatarUrl ?? null,
+                  isLinked: true
+                }
+              ]
+            }
+          : trip
+      );
+
+      return tripId;
+    },
     listTrips: async () => trips,
     listExpenses: async (tripId) => expenses.filter((expense) => expense.tripId === tripId),
     listSettlementTransfers: async (tripId) =>
@@ -344,6 +380,28 @@ const supabaseRepository = (): TripsRepository => {
       if (error) {
         throw error;
       }
+    },
+    createTripInvite: async (tripId) => {
+      const { data, error } = await supabase.rpc("create_trip_invite", {
+        target_trip_id: tripId
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      return data as string;
+    },
+    acceptTripInvite: async (token) => {
+      const { data, error } = await supabase.rpc("accept_trip_invite", {
+        invite_token: token
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      return data as string;
     },
     listTrips: async () => {
       const { data, error } = await supabase

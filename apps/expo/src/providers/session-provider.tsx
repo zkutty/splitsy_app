@@ -8,6 +8,9 @@ import { createSupabaseClient, hasSupabaseConfig } from "../services/supabase";
 
 WebBrowser.maybeCompleteAuthSession();
 
+const PENDING_POST_AUTH_PATH_KEY = "__splittrip_pending_post_auth_path__";
+let nativePendingPostAuthPath: string | null = null;
+
 function getRedirectUrl() {
   if (Platform.OS === "web" && typeof window !== "undefined") {
     return `${window.location.origin}/auth/callback`;
@@ -19,6 +22,27 @@ function getRedirectUrl() {
   });
 }
 
+function readPendingPostAuthPath() {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    return window.localStorage.getItem(PENDING_POST_AUTH_PATH_KEY);
+  }
+
+  return nativePendingPostAuthPath;
+}
+
+function writePendingPostAuthPath(path: string | null) {
+  if (Platform.OS === "web" && typeof window !== "undefined") {
+    if (path) {
+      window.localStorage.setItem(PENDING_POST_AUTH_PATH_KEY, path);
+    } else {
+      window.localStorage.removeItem(PENDING_POST_AUTH_PATH_KEY);
+    }
+    return;
+  }
+
+  nativePendingPostAuthPath = path;
+}
+
 type SessionContextValue = {
   authMode: "supabase" | "demo";
   isLoading: boolean;
@@ -26,6 +50,9 @@ type SessionContextValue = {
   user: User | null;
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
+  getPendingPostAuthPath: () => string | null;
+  setPendingPostAuthPath: (path: string | null) => void;
+  consumePendingPostAuthPath: () => string | null;
 };
 
 const SESSION_CONTEXT_KEY = "__splittrip_session_context__";
@@ -128,6 +155,15 @@ export function SessionProvider({ children }: PropsWithChildren) {
         } else {
           setDemoSignedIn(false);
         }
+      },
+      getPendingPostAuthPath: () => readPendingPostAuthPath(),
+      setPendingPostAuthPath: (path) => {
+        writePendingPostAuthPath(path);
+      },
+      consumePendingPostAuthPath: () => {
+        const path = readPendingPostAuthPath();
+        writePendingPostAuthPath(null);
+        return path;
       }
     };
   }, [authMode, demoSignedIn, isLoading, session]);

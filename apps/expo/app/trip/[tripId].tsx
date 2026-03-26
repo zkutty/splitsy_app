@@ -1,6 +1,7 @@
 import { Redirect, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { StyleSheet, View, useWindowDimensions } from "react-native";
+import * as Linking from "expo-linking";
+import { Platform, Share, StyleSheet, View, useWindowDimensions } from "react-native";
 
 import { PRESET_CATEGORIES, settleTrip, validateExpenseDraft } from "@splitsy/domain";
 import type { Expense, TripSettlementTransfer } from "@splitsy/domain";
@@ -27,6 +28,7 @@ export default function TripDetailsScreen() {
     canEditTrip,
     canCompleteTrip,
     completeTrip,
+    createTripInviteLink,
     getExpensesForTrip,
     getSettlementTransfersForTrip,
     canEditExpense,
@@ -64,6 +66,10 @@ export default function TripDetailsScreen() {
   const [isSavingExpense, setIsSavingExpense] = useState(false);
   const [isAddingMember, setIsAddingMember] = useState(false);
   const [isCompletingTrip, setIsCompletingTrip] = useState(false);
+  const [isCreatingInvite, setIsCreatingInvite] = useState(false);
+  const [inviteLink, setInviteLink] = useState("");
+  const [inviteFeedback, setInviteFeedback] = useState<string | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
   const [activeTransferId, setActiveTransferId] = useState<string | null>(null);
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
 
@@ -313,6 +319,67 @@ export default function TripDetailsScreen() {
     }
 
     return null;
+  };
+
+  const buildInviteUrl = (token: string) => {
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      return `${window.location.origin}/join/${token}`;
+    }
+
+    return Linking.createURL(`/join/${token}`);
+  };
+
+  const createInviteLinkValue = async (): Promise<string | null> => {
+    if (!mayManageTrip || !isTripActive) {
+      return null;
+    }
+
+    setIsCreatingInvite(true);
+    setInviteError(null);
+    setInviteFeedback(null);
+
+    try {
+      const token = await createTripInviteLink(trip.id);
+      const nextInviteLink = buildInviteUrl(token);
+      setInviteLink(nextInviteLink);
+
+      if (
+        Platform.OS === "web" &&
+        typeof navigator !== "undefined" &&
+        navigator.clipboard &&
+        typeof navigator.clipboard.writeText === "function"
+      ) {
+        await navigator.clipboard.writeText(nextInviteLink);
+        setInviteFeedback("Invite link copied to clipboard.");
+      } else {
+        setInviteFeedback("Invite link ready to share.");
+      }
+
+      return nextInviteLink;
+    } catch (error) {
+      setInviteError(error instanceof Error ? error.message : "Unable to create an invite link.");
+      return null;
+    } finally {
+      setIsCreatingInvite(false);
+    }
+  };
+
+  const generateInviteLink = async (): Promise<void> => {
+    await createInviteLinkValue();
+  };
+
+  const shareInviteLink = async (): Promise<void> => {
+    const link = inviteLink || (await createInviteLinkValue());
+
+    if (!link) {
+      return;
+    }
+
+    await Share.share({
+      message: `Join my SplitTrip workspace: ${link}`,
+      url: link
+    });
+
   };
 
   return (
@@ -640,6 +707,37 @@ export default function TripDetailsScreen() {
                 : "You can see everyone on the trip. Only the trip creator can manage membership."
             }
           >
+            {mayManageTrip && isTripActive ? (
+              <View style={styles.group}>
+                <View style={[styles.actionRow, compact ? styles.actionRowCompact : null]}>
+                  <AppButton onPress={generateInviteLink} disabled={isCreatingInvite} variant="secondary">
+                    {isCreatingInvite ? "Creating link..." : "Create invite link"}
+                  </AppButton>
+                  <AppButton onPress={shareInviteLink} disabled={isCreatingInvite} variant="secondary">
+                    Share link
+                  </AppButton>
+                </View>
+                {inviteLink ? (
+                  <AppInput
+                    label="Latest invite link"
+                    value={inviteLink}
+                    onChangeText={setInviteLink}
+                    editable={false}
+                    helperText="This invite link is one-time use in the current implementation."
+                  />
+                ) : null}
+                {inviteFeedback ? (
+                  <AppText variant="bodySm" color="muted">
+                    {inviteFeedback}
+                  </AppText>
+                ) : null}
+                {inviteError ? (
+                  <AppText variant="bodySm" color="danger">
+                    {inviteError}
+                  </AppText>
+                ) : null}
+              </View>
+            ) : null}
             <View style={styles.chipWrap}>
               {trip.members.map((member) => (
                 <View key={member.id} style={styles.memberStatusCard}>

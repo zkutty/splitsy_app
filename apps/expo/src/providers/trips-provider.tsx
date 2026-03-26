@@ -18,6 +18,8 @@ type TripsContextValue = {
     startDate?: string;
     endDate?: string;
   }) => Promise<void>;
+  createTripInviteLink: (tripId: string) => Promise<string>;
+  acceptTripInvite: (token: string) => Promise<string>;
   addTripMember: (tripId: string, input: { displayName: string; email?: string }) => Promise<void>;
   getTripById: (tripId: string) => Trip | undefined;
   getCurrentMemberForTrip: (tripId: string) => Trip["members"][number] | undefined;
@@ -54,6 +56,52 @@ export function TripsProvider({ children }: PropsWithChildren) {
   const session = useSession();
   const repository = useMemo(() => createTripsRepository(), []);
 
+  const currentUser: UserProfile = useMemo(
+    () =>
+      session.authMode === "demo"
+        ? demoOwnerProfile
+        : session.user
+          ? {
+              id: session.user.id,
+              email: session.user.email,
+              displayName:
+                (session.user.user_metadata?.name as string | undefined) ??
+                (session.user.user_metadata?.full_name as string | undefined) ??
+                session.user.email ??
+                "Traveler",
+              avatarUrl: (session.user.user_metadata?.avatar_url as string | undefined) ?? null
+            }
+          : {
+              id: "",
+              email: null,
+              displayName: "",
+              avatarUrl: null
+            },
+    [session.authMode, session.user]
+  );
+
+  const reloadTripData = async (profile: UserProfile) => {
+    if (!profile.id) {
+      setTrips([]);
+      setExpenses([]);
+      setSettlementTransfers([]);
+      return;
+    }
+
+    await repository.ensureProfile(profile);
+    await repository.claimMembershipsForCurrentUser();
+    const loadedTrips = await repository.listTrips();
+    const loadedExpenses = loadedTrips.length
+      ? (await Promise.all(loadedTrips.map((trip) => repository.listExpenses(trip.id)))).flat()
+      : [];
+    const loadedSettlementTransfers = loadedTrips.length
+      ? (await Promise.all(loadedTrips.map((trip) => repository.listSettlementTransfers(trip.id)))).flat()
+      : [];
+    setTrips(loadedTrips);
+    setExpenses(loadedExpenses);
+    setSettlementTransfers(loadedSettlementTransfers);
+  };
+
   useEffect(() => {
     if (session.isLoading || !session.isAuthenticated) {
       setTrips([]);
@@ -63,36 +111,14 @@ export function TripsProvider({ children }: PropsWithChildren) {
       return;
     }
 
-    if (!session.user) {
+    if (!currentUser.id) {
       setIsLoading(false);
       return;
     }
 
-    const currentUser: UserProfile = {
-      id: session.user.id,
-      email: session.user.email,
-      displayName:
-        (session.user.user_metadata?.name as string | undefined) ??
-        (session.user.user_metadata?.full_name as string | undefined) ??
-        session.user.email ??
-        "Traveler",
-      avatarUrl: (session.user.user_metadata?.avatar_url as string | undefined) ?? null
-    };
-
     const load = async () => {
       setIsLoading(true);
-      await repository.ensureProfile(currentUser);
-      await repository.claimMembershipsForCurrentUser();
-      const loadedTrips = await repository.listTrips();
-      const loadedExpenses = loadedTrips.length
-        ? (await Promise.all(loadedTrips.map((trip) => repository.listExpenses(trip.id)))).flat()
-        : [];
-      const loadedSettlementTransfers = loadedTrips.length
-        ? (await Promise.all(loadedTrips.map((trip) => repository.listSettlementTransfers(trip.id)))).flat()
-        : [];
-      setTrips(loadedTrips);
-      setExpenses(loadedExpenses);
-      setSettlementTransfers(loadedSettlementTransfers);
+      await reloadTripData(currentUser);
       setIsLoading(false);
     };
 
@@ -100,28 +126,7 @@ export function TripsProvider({ children }: PropsWithChildren) {
       console.error("Failed to load trip data", error);
       setIsLoading(false);
     });
-  }, [repository, session.isAuthenticated, session.isLoading, session.user]);
-
-  const currentUser: UserProfile =
-    session.authMode === "demo"
-      ? demoOwnerProfile
-      : session.user
-        ? {
-            id: session.user.id,
-            email: session.user.email,
-            displayName:
-              (session.user.user_metadata?.name as string | undefined) ??
-              (session.user.user_metadata?.full_name as string | undefined) ??
-              session.user.email ??
-              "Traveler",
-            avatarUrl: (session.user.user_metadata?.avatar_url as string | undefined) ?? null
-          }
-        : {
-            id: "",
-            email: null,
-            displayName: "",
-            avatarUrl: null
-          };
+  }, [currentUser, repository, session.isAuthenticated, session.isLoading]);
 
   const value = useMemo<TripsContextValue>(
     () => ({
@@ -141,6 +146,17 @@ export function TripsProvider({ children }: PropsWithChildren) {
         });
 
         setTrips((current) => [trip, ...current]);
+      },
+      createTripInviteLink: async (tripId) => repository.createTripInvite(tripId),
+      acceptTripInvite: async (token) => {
+        if (session.authMode === "supabase" && !session.user) {
+          throw new Error("You must be signed in to accept an invite.");
+        }
+
+        await repository.ensureProfile(currentUser);
+        const acceptedTripId = await repository.acceptTripInvite(token);
+        await reloadTripData(currentUser);
+        return acceptedTripId;
       },
       addTripMember: async (tripId, input) => {
         if (session.authMode === "supabase" && !session.user) {
@@ -252,7 +268,7 @@ export function TripsProvider({ children }: PropsWithChildren) {
         setExpenses((current) => current.filter((item) => item.id !== expenseId));
       }
     }),
-    [currentUser, expenses, isLoading, repository, session.authMode, session.signOut, settlementTransfers, trips]
+    [currentUser, expenses, isLoading, repository, session.authMode, session.signOut, session.user, settlementTransfers, trips]
   );
 
   return <TripsContext.Provider value={value}>{children}</TripsContext.Provider>;

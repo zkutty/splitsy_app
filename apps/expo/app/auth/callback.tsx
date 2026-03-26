@@ -1,18 +1,26 @@
-import { Redirect } from "expo-router";
+import { useRouter } from "expo-router";
+import { useEffect } from "react";
 import { View } from "react-native";
 
 import { useSession } from "../../src/providers/session-provider";
 
 export default function AuthCallbackScreen() {
-  const { isLoading, isAuthenticated } = useSession();
+  const router = useRouter();
+  const { isLoading, isAuthenticated, consumePendingPostAuthPath } = useSession();
 
-  if (isLoading) {
-    return <View style={{ flex: 1, backgroundColor: "#f6f1e8" }} />;
-  }
+  useEffect(() => {
+    if (isLoading) {
+      return;
+    }
 
-  if (isAuthenticated) {
-    return <Redirect href="/trips" />;
-  }
+    if (isAuthenticated) {
+      const nextPath = consumePendingPostAuthPath() ?? "/trips";
+      router.replace(nextPath as any);
+      return;
+    }
 
-  return <Redirect href="/sign-in" />;
+    router.replace("/sign-in");
+  }, [consumePendingPostAuthPath, isAuthenticated, isLoading, router]);
+
+  return <View style={{ flex: 1, backgroundColor: "#f6f1e8" }} />;
 }
