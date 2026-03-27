@@ -1,6 +1,7 @@
 import type { Expense, Trip, TripSettlementTransfer, UserProfile } from "@splitsy/domain";
 import { settleTrip } from "@splitsy/domain";
 import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useState } from "react";
+import { AppState, Platform } from "react-native";
 
 import { useSession } from "./session-provider";
 import { AddExpenseInput, createTripsRepository, demoOwnerProfile } from "../services/trips-repository";
@@ -127,6 +128,69 @@ export function TripsProvider({ children }: PropsWithChildren) {
       console.error("Failed to load trip data", error);
       setIsLoading(false);
     });
+  }, [currentUser, repository, session.isAuthenticated, session.isLoading]);
+
+  useEffect(() => {
+    if (session.isLoading || !session.isAuthenticated || !currentUser.id) {
+      return;
+    }
+
+    let cancelled = false;
+    let refreshInFlight = false;
+
+    const refresh = async () => {
+      if (cancelled || refreshInFlight) {
+        return;
+      }
+
+      refreshInFlight = true;
+
+      try {
+        await reloadTripData(currentUser);
+      } catch (error) {
+        console.error("Failed to refresh trip data", error);
+      } finally {
+        refreshInFlight = false;
+      }
+    };
+
+    const intervalId = setInterval(() => {
+      void refresh();
+    }, 10_000);
+
+    const appStateSubscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        void refresh();
+      }
+    });
+
+    const handleWebRefresh = () => {
+      if (Platform.OS !== "web") {
+        return;
+      }
+
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        return;
+      }
+
+      void refresh();
+    };
+
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      window.addEventListener("focus", handleWebRefresh);
+      document.addEventListener("visibilitychange", handleWebRefresh);
+    }
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+      appStateSubscription.remove();
+
+      if (Platform.OS === "web" && typeof window !== "undefined") {
+        window.removeEventListener("focus", handleWebRefresh);
+        document.removeEventListener("visibilitychange", handleWebRefresh);
+      }
+    };
   }, [currentUser, repository, session.isAuthenticated, session.isLoading]);
 
   const value = useMemo<TripsContextValue>(

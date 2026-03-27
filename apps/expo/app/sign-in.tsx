@@ -11,15 +11,16 @@ import { SurfaceCard } from "../src/ui/primitives/SurfaceCard";
 import { Theme, useAppTheme } from "../src/ui/theme";
 
 export default function SignInScreen() {
-  const { signIn, authMode, isLoading, isAuthenticated } = useSession();
+  const { signIn, authMode, isLoading, isAuthenticated, getPendingPostAuthPath } = useSession();
   const { theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { width } = useWindowDimensions();
   const wide = width >= 960;
   const compact = width < 768;
+  const pendingPostAuthPath = getPendingPostAuthPath();
 
   if (!isLoading && isAuthenticated) {
-    return <Redirect href={"/home" as any} />;
+    return <Redirect href={(pendingPostAuthPath ?? "/home") as any} />;
   }
 
   return (

@@ -32,6 +32,7 @@ export default function JoinTripScreen() {
     }
 
     setHasAttemptedJoin(true);
+    session.setPendingPostAuthPath(null);
     let cancelled = false;
 
     acceptTripInvite(token)
