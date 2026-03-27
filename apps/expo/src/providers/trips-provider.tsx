@@ -220,7 +220,14 @@ export function TripsProvider({ children }: PropsWithChildren) {
 
         await repository.ensureProfile(currentUser);
         const acceptedTripId = await repository.acceptTripInvite(token);
-        await reloadTripData(currentUser);
+        setIsLoading(true);
+        void reloadTripData(currentUser)
+          .catch((error) => {
+            console.error("Failed to reload trip data after accepting invite", error);
+          })
+          .finally(() => {
+            setIsLoading(false);
+          });
         return acceptedTripId;
       },
       addTripMember: async (tripId, input) => {

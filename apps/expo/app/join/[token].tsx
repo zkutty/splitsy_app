@@ -15,6 +15,7 @@ export default function JoinTripScreen() {
   const { acceptTripInvite, isLoading } = useTrips();
   const [error, setError] = useState<string | null>(null);
   const [hasAttemptedJoin, setHasAttemptedJoin] = useState(false);
+  const [joinedTripId, setJoinedTripId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token || session.isLoading || hasAttemptedJoin) {
@@ -38,6 +39,7 @@ export default function JoinTripScreen() {
     acceptTripInvite(token)
       .then((tripId) => {
         if (!cancelled) {
+          setJoinedTripId(tripId);
           router.replace({ pathname: "/trip/[tripId]", params: { tripId } });
         }
       })
@@ -63,6 +65,15 @@ export default function JoinTripScreen() {
             </AppText>
             <AppButton onPress={() => router.replace("/trips")} variant="secondary">
               Back to trips
+            </AppButton>
+          </>
+        ) : joinedTripId ? (
+          <>
+            <AppText variant="bodySm" color="muted">
+              Trip added to your account.
+            </AppText>
+            <AppButton onPress={() => router.replace({ pathname: "/trip/[tripId]", params: { tripId: joinedTripId } })}>
+              Open trip
             </AppButton>
           </>
         ) : (
