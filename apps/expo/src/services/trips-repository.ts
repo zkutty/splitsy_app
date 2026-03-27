@@ -701,7 +701,6 @@ const supabaseRepository = (): TripsRepository => {
     createTrip: async (input) => {
       const authUser = await getCurrentAuthUser();
       const ownerProfile = {
-        id: authUser.id,
         email: authUser.email ?? input.owner.email ?? null,
         displayName:
           (authUser.user_metadata?.name as string | undefined) ??
@@ -710,82 +709,22 @@ const supabaseRepository = (): TripsRepository => {
         avatarUrl: (authUser.user_metadata?.avatar_url as string | undefined) ?? input.owner.avatarUrl ?? null
       };
 
-      const { error: profileError } = await supabase.from("users").upsert(
-        {
-          id: ownerProfile.id,
-          email: ownerProfile.email,
-          display_name: ownerProfile.displayName,
-          avatar_url: ownerProfile.avatarUrl
-        },
-        {
-          onConflict: "id"
-        }
-      );
+      const { data: createdTripId, error: createTripError } = await supabase.rpc("create_trip", {
+        trip_name: input.name,
+        trip_destination: input.destination ?? null,
+        trip_currency_code: input.tripCurrencyCode,
+        trip_start_date: input.startDate ?? null,
+        trip_end_date: input.endDate ?? null,
+        creator_display_name: ownerProfile.displayName,
+        creator_email: ownerProfile.email,
+        creator_avatar_url: ownerProfile.avatarUrl
+      });
 
-      if (profileError) {
-        throw profileError;
+      if (createTripError) {
+        throw createTripError;
       }
 
-      const { data: tripRow, error: tripError } = await supabase
-        .from("trips")
-        .insert({
-          name: input.name,
-          destination: input.destination ?? null,
-          trip_currency_code: input.tripCurrencyCode,
-          start_date: input.startDate ?? null,
-          end_date: input.endDate ?? null
-        })
-        .select(
-          "id, created_by_user_id, status, name, destination, trip_currency_code, start_date, end_date, completed_at, completed_by_user_id, settled_at"
-        )
-        .single();
-
-      if (tripError) {
-        throw tripError;
-      }
-
-      const { data: ownerMemberRow, error: membershipError } = await supabase
-        .from("trip_members")
-        .insert({
-          trip_id: tripRow.id,
-          user_id: ownerProfile.id,
-          display_name: ownerProfile.displayName,
-          email: ownerProfile.email,
-          normalized_email: normalizeEmail(ownerProfile.email),
-          avatar_url: ownerProfile.avatarUrl
-        })
-        .select("id, display_name, avatar_url")
-        .single();
-
-      if (membershipError) {
-        throw membershipError;
-      }
-
-      return {
-        id: tripRow.id,
-        createdByUserId: tripRow.created_by_user_id,
-        status: tripRow.status ?? "active",
-        name: tripRow.name,
-        destination: tripRow.destination,
-        tripCurrencyCode: tripRow.trip_currency_code,
-        startDate: tripRow.start_date,
-        endDate: tripRow.end_date,
-        completedAt: tripRow.completed_at ?? null,
-        completedByUserId: tripRow.completed_by_user_id ?? null,
-        settledAt: tripRow.settled_at ?? null,
-        members: [
-          {
-            id: ownerMemberRow.id,
-            userId: ownerProfile.id,
-            email: ownerProfile.email,
-            displayName: ownerMemberRow.display_name,
-            avatarUrl: ownerMemberRow.avatar_url ?? null,
-            isLinked: true,
-            status: "active",
-            removedAt: null
-          }
-        ]
-      };
+      return fetchTrip(createdTripId);
     },
     addTripMember: async (tripId, member) => {
       const normalizedEmail = normalizeEmail(member.email);
