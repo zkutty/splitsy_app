@@ -79,11 +79,31 @@ export function SessionProvider({ children }: PropsWithChildren) {
 
     const supabase = createSupabaseClient();
 
-    supabase.auth
-      .getSession()
-      .then(({ data }) => {
-        setSession(data.session);
-      })
+    const hydrateSession = async () => {
+      const {
+        data: { session: nextSession }
+      } = await supabase.auth.getSession();
+
+      if (!nextSession) {
+        setSession(null);
+        return;
+      }
+
+      const {
+        data: { user },
+        error
+      } = await supabase.auth.getUser();
+
+      if (error || !user) {
+        await supabase.auth.signOut();
+        setSession(null);
+        return;
+      }
+
+      setSession({ ...nextSession, user });
+    };
+
+    hydrateSession()
       .finally(() => {
         setIsLoading(false);
       });

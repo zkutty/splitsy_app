@@ -330,7 +330,7 @@ const supabaseRepository = (): TripsRepository => {
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
   const normalizeEmail = (value?: string | null) => value?.trim().toLowerCase() ?? null;
 
-  const getCurrentUserId = async () => {
+  const getCurrentAuthUser = async () => {
     const {
       data: { user },
       error
@@ -344,6 +344,11 @@ const supabaseRepository = (): TripsRepository => {
       throw new Error("You must be signed in to modify trip data.");
     }
 
+    return user;
+  };
+
+  const getCurrentUserId = async () => {
+    const user = await getCurrentAuthUser();
     return user.id;
   };
 
@@ -694,12 +699,23 @@ const supabaseRepository = (): TripsRepository => {
       return mapSettlementTransfer(data);
     },
     createTrip: async (input) => {
+      const authUser = await getCurrentAuthUser();
+      const ownerProfile = {
+        id: authUser.id,
+        email: authUser.email ?? input.owner.email ?? null,
+        displayName:
+          (authUser.user_metadata?.name as string | undefined) ??
+          (authUser.user_metadata?.full_name as string | undefined) ??
+          input.owner.displayName,
+        avatarUrl: (authUser.user_metadata?.avatar_url as string | undefined) ?? input.owner.avatarUrl ?? null
+      };
+
       const { error: profileError } = await supabase.from("users").upsert(
         {
-          id: input.owner.id,
-          email: input.owner.email ?? null,
-          display_name: input.owner.displayName,
-          avatar_url: input.owner.avatarUrl ?? null
+          id: ownerProfile.id,
+          email: ownerProfile.email,
+          display_name: ownerProfile.displayName,
+          avatar_url: ownerProfile.avatarUrl
         },
         {
           onConflict: "id"
@@ -732,11 +748,11 @@ const supabaseRepository = (): TripsRepository => {
         .from("trip_members")
         .insert({
           trip_id: tripRow.id,
-          user_id: input.owner.id,
-          display_name: input.owner.displayName,
-          email: input.owner.email ?? null,
-          normalized_email: normalizeEmail(input.owner.email),
-          avatar_url: input.owner.avatarUrl ?? null
+          user_id: ownerProfile.id,
+          display_name: ownerProfile.displayName,
+          email: ownerProfile.email,
+          normalized_email: normalizeEmail(ownerProfile.email),
+          avatar_url: ownerProfile.avatarUrl
         })
         .select("id, display_name, avatar_url")
         .single();
@@ -760,8 +776,8 @@ const supabaseRepository = (): TripsRepository => {
         members: [
           {
             id: ownerMemberRow.id,
-            userId: input.owner.id,
-            email: input.owner.email ?? null,
+            userId: ownerProfile.id,
+            email: ownerProfile.email,
             displayName: ownerMemberRow.display_name,
             avatarUrl: ownerMemberRow.avatar_url ?? null,
             isLinked: true,
