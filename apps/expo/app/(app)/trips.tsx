@@ -2,13 +2,12 @@ import { Link } from "expo-router";
 import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 
-import { MAJOR_CURRENCIES } from "../../src/lib/rates";
 import { useTrips } from "../../src/providers/trips-provider";
 import { AppScreen } from "../../src/ui/layout/AppScreen";
 import { AppButton } from "../../src/ui/primitives/AppButton";
 import { AppInput } from "../../src/ui/primitives/AppInput";
 import { AppText } from "../../src/ui/primitives/AppText";
-import { Chip } from "../../src/ui/primitives/Chip";
+import { CurrencyPicker } from "../../src/ui/primitives/CurrencyPicker";
 import { SurfaceCard } from "../../src/ui/primitives/SurfaceCard";
 import { Theme, useAppTheme } from "../../src/ui/theme";
 
@@ -152,21 +151,11 @@ export default function TripsScreen() {
                 />
               </View>
             </View>
-            <View style={styles.selectorGroup}>
-              <AppText variant="meta" color="muted">
-                Trip currency
-              </AppText>
-              <View style={styles.selectorWrap}>
-                {MAJOR_CURRENCIES.map((currency) => (
-                  <Chip
-                    key={currency.code}
-                    label={currency.code}
-                    selected={tripCurrencyCode === currency.code}
-                    onPress={() => setTripCurrencyCode(currency.code)}
-                  />
-                ))}
-              </View>
-            </View>
+            <CurrencyPicker
+              label="Trip currency"
+              value={tripCurrencyCode}
+              onChange={setTripCurrencyCode}
+            />
             {createTripError ? (
               <AppText variant="bodySm" color="danger">
                 {createTripError}
@@ -299,14 +288,6 @@ function createStyles(theme: Theme) {
     },
     formField: {
       flex: 1
-    },
-    selectorGroup: {
-      gap: theme.spacing.sm
-    },
-    selectorWrap: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: theme.spacing.sm
     },
     /* Summary section */
     summaryCard: {

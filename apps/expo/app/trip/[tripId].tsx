@@ -7,7 +7,7 @@ import { PRESET_CATEGORIES, settleTrip, validateExpenseDraft } from "@splitsy/do
 import type { Expense, TripSettlementTransfer } from "@splitsy/domain";
 
 import { formatCurrency } from "../../src/lib/format";
-import { getConversionRate, MAJOR_CURRENCIES } from "../../src/lib/rates";
+import { fetchConversionRate } from "../../src/lib/rates";
 import { useSession } from "../../src/providers/session-provider";
 import { useTrips } from "../../src/providers/trips-provider";
 import { AppScreen } from "../../src/ui/layout/AppScreen";
@@ -15,6 +15,7 @@ import { AppButton } from "../../src/ui/primitives/AppButton";
 import { AppInput } from "../../src/ui/primitives/AppInput";
 import { AppText } from "../../src/ui/primitives/AppText";
 import { Chip } from "../../src/ui/primitives/Chip";
+import { CurrencyPicker } from "../../src/ui/primitives/CurrencyPicker";
 import { SectionCard } from "../../src/ui/primitives/SectionCard";
 import { SurfaceCard } from "../../src/ui/primitives/SurfaceCard";
 import { Theme, useAppTheme } from "../../src/ui/theme";
@@ -230,11 +231,15 @@ export default function TripDetailsScreen() {
       return;
     }
 
-    const rate = getConversionRate(draft.currencyCode, trip.tripCurrencyCode);
-
     setIsSavingExpense(true);
 
     try {
+      const { rate } = await fetchConversionRate(
+        draft.currencyCode,
+        trip.tripCurrencyCode,
+        draft.expenseDate
+      );
+
       const expensePayload = {
         ...draft,
         conversionRateToTripCurrency: rate,
@@ -526,24 +531,15 @@ export default function TripDetailsScreen() {
               helperText="Use YYYY-MM-DD."
               editable={isTripActive}
             />
-            <View style={styles.group}>
-              <AppText variant="meta" color="muted">
-                Original currency
-              </AppText>
-              <View style={styles.chipWrap}>
-                {MAJOR_CURRENCIES.map((currency) => (
-                  <Chip
-                    key={currency.code}
-                    label={currency.code}
-                    selected={currencyCode === currency.code}
-                    onPress={isTripActive ? () => setCurrencyCode(currency.code) : undefined}
-                  />
-                ))}
-              </View>
-              <AppText variant="bodySm" color="muted">
-                Expense amounts are converted into {trip.tripCurrencyCode} for settlement.
-              </AppText>
-            </View>
+            <CurrencyPicker
+              label="Original currency"
+              value={currencyCode}
+              onChange={setCurrencyCode}
+              disabled={!isTripActive}
+            />
+            <AppText variant="bodySm" color="muted">
+              Expense amounts are converted into {trip.tripCurrencyCode} using the rate for the expense date.
+            </AppText>
             <AppInput
               label="Note"
               value={note}
