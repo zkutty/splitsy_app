@@ -23,6 +23,7 @@ export default function TripsScreen() {
   const [endDate, setEndDate] = useState("");
   const [isCreatingTrip, setIsCreatingTrip] = useState(false);
   const [createTripError, setCreateTripError] = useState<string | null>(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
   const { width } = useWindowDimensions();
   const wide = width >= 960;
   const compact = width < 768;
@@ -53,124 +54,7 @@ export default function TripsScreen() {
         </AppText>
       </View>
 
-      <View style={[styles.topGrid, wide ? styles.topGridWide : null]}>
-        <SurfaceCard style={styles.createCard}>
-          <AppText variant="sectionTitle">Start a trip</AppText>
-          <AppText variant="bodySm" color="muted">
-            Create the workspace first, then invite members and begin logging expenses.
-          </AppText>
-          <AppInput label="Trip name" value={name} onChangeText={setName} placeholder="Summer in Lisbon" />
-          <AppInput label="Destination" value={destination} onChangeText={setDestination} placeholder="Lisbon" />
-          <AppInput
-            label="Start date"
-            value={startDate}
-            onChangeText={setStartDate}
-            placeholder="2026-06-10"
-            helperText="Optional. Use YYYY-MM-DD."
-          />
-          <AppInput
-            label="End date"
-            value={endDate}
-            onChangeText={setEndDate}
-            placeholder="2026-06-17"
-            helperText="Optional. Use YYYY-MM-DD."
-          />
-          <View style={styles.selectorGroup}>
-            <AppText variant="meta" color="muted">
-              Trip currency
-            </AppText>
-            <View style={styles.selectorWrap}>
-              {MAJOR_CURRENCIES.map((currency) => (
-                <Chip
-                  key={currency.code}
-                  label={currency.code}
-                  selected={tripCurrencyCode === currency.code}
-                  onPress={() => setTripCurrencyCode(currency.code)}
-                />
-              ))}
-            </View>
-            <AppText variant="bodySm" color="muted">
-              This is the currency used for balances and settlement.
-            </AppText>
-          </View>
-          {createTripError ? (
-            <AppText variant="bodySm" color="danger">
-              {createTripError}
-            </AppText>
-          ) : null}
-          <AppButton
-            onPress={async () => {
-              try {
-                setIsCreatingTrip(true);
-                setCreateTripError(null);
-                await createTrip({
-                  name: name.trim() || "Untitled trip",
-                  destination: destination.trim() || undefined,
-                  tripCurrencyCode: tripCurrencyCode.trim().toUpperCase() || "USD",
-                  startDate: startDate.trim() || undefined,
-                  endDate: endDate.trim() || undefined
-                });
-                setName("");
-                setDestination("");
-                setTripCurrencyCode("USD");
-                setStartDate("");
-                setEndDate("");
-              } catch (error) {
-                console.error("Create trip failed", error);
-                setCreateTripError(getErrorMessage(error));
-              } finally {
-                setIsCreatingTrip(false);
-              }
-            }}
-            disabled={isCreatingTrip}
-          >
-            {isCreatingTrip ? "Creating..." : "Create trip"}
-          </AppButton>
-        </SurfaceCard>
-
-        <SurfaceCard tone="muted" style={styles.summaryCard}>
-          <AppText variant="eyebrow" color="secondary">
-            SplitTrip
-          </AppText>
-          <AppText variant="sectionTitle">Organize travel spending without hunting through messages.</AppText>
-          <AppText variant="bodySm" color="secondary">
-            Capture trip details once, then keep members, expenses, and settlements aligned in a single workspace.
-          </AppText>
-          <View style={[styles.identityCard, compact ? styles.identityCardCompact : null]}>
-            <View style={styles.identityCopy}>
-              <AppText variant="meta" color="muted">
-                Workspace owner
-              </AppText>
-              <AppText variant="bodySm" color="secondary" style={styles.identityName}>
-                {currentUser.displayName}
-              </AppText>
-              <AppText variant="bodySm" color="muted">
-                {currentUser.email ?? "Email unavailable"}
-              </AppText>
-            </View>
-            <View style={styles.identityAvatar}>
-              <AppText variant="bodySm" color="inverse" style={styles.identityAvatarText}>
-                {(currentUser.displayName || "T").slice(0, 1).toUpperCase()}
-              </AppText>
-            </View>
-          </View>
-          <View style={[styles.statRow, compact ? styles.statRowCompact : null]}>
-            <View style={styles.statCard}>
-              <AppText variant="meta" color="muted">
-                Trips
-              </AppText>
-              <AppText variant="sectionTitle">{trips.length}</AppText>
-            </View>
-            <View style={styles.statCard}>
-              <AppText variant="meta" color="muted">
-                Account
-              </AppText>
-              <AppText variant="sectionTitle">{authMode === "supabase" ? "Cloud" : "Demo"}</AppText>
-            </View>
-          </View>
-        </SurfaceCard>
-      </View>
-
+      {/* Trip list — shown first for quick access */}
       {isLoading ? (
         <SurfaceCard>
           <AppText variant="bodySm" color="muted">
@@ -183,153 +67,277 @@ export default function TripsScreen() {
         <SurfaceCard style={styles.emptyState}>
           <AppText variant="sectionTitle">Your first trip starts here.</AppText>
           <AppText variant="bodySm" color="muted">
-            Create a trip, invite your group, and let SplitTrip handle the settlement math at the end.
+            Create a trip, invite your group, and let SplitTrip handle the settlement math.
           </AppText>
         </SurfaceCard>
       ) : null}
 
-      <View style={styles.tripList}>
-        {trips.map((trip) => (
-          <Link href={{ pathname: "/trip/[tripId]", params: { tripId: trip.id } }} key={trip.id} asChild>
-            <Pressable style={({ pressed }) => [styles.linkWrapper, pressed ? styles.linkWrapperPressed : null]}>
-              <SurfaceCard style={styles.tripCard}>
-                <View style={[styles.tripHeader, compact ? styles.tripHeaderCompact : null]}>
-                  <View style={styles.tripBadge}>
-                    <AppText variant="meta" color="inverse">
-                      Trip
+      {!isLoading && trips.length > 0 ? (
+        <View style={styles.tripList}>
+          {trips.map((trip) => (
+            <Link href={{ pathname: "/trip/[tripId]", params: { tripId: trip.id } }} key={trip.id} asChild>
+              <Pressable style={({ pressed }) => [styles.linkWrapper, pressed ? styles.linkWrapperPressed : null]}>
+                <SurfaceCard style={styles.tripCard}>
+                  <View style={styles.tripTopRow}>
+                    <View style={styles.tripBadge}>
+                      <AppText variant="meta" color="inverse">
+                        Trip
+                      </AppText>
+                    </View>
+                    <AppText variant="bodySm" color="muted">
+                      {trip.tripCurrencyCode} · {trip.members.length} members · {trip.status ?? "active"}
                     </AppText>
                   </View>
-                  <AppText variant="bodySm" color="muted">
-                    {trip.tripCurrencyCode}
-                  </AppText>
-                </View>
-                <AppText variant="sectionTitle">{trip.name}</AppText>
-                <AppText variant="bodySm" color="secondary">
-                  {trip.destination ?? "Destination coming soon"}
+                  <AppText variant="sectionTitle">{trip.name}</AppText>
+                  <View style={styles.tripMeta}>
+                    <AppText variant="bodySm" color="secondary">
+                      {trip.destination ?? "Destination TBD"}
+                      {trip.startDate
+                        ? ` · ${trip.startDate}${trip.endDate ? ` – ${trip.endDate}` : ""}`
+                        : ""}
+                    </AppText>
+                  </View>
+                </SurfaceCard>
+              </Pressable>
+            </Link>
+          ))}
+        </View>
+      ) : null}
+
+      {/* Create trip — collapsible section */}
+      <SurfaceCard style={styles.createCard}>
+        <Pressable
+          onPress={() => setShowCreateForm((prev) => !prev)}
+          style={styles.createToggle}
+          hitSlop={4}
+        >
+          <View style={styles.createToggleCopy}>
+            <AppText variant="sectionTitle">Start a trip</AppText>
+            <AppText variant="bodySm" color="muted">
+              Create a new workspace for your group.
+            </AppText>
+          </View>
+          <AppText variant="body" color="muted">
+            {showCreateForm ? "−" : "+"}
+          </AppText>
+        </Pressable>
+
+        {showCreateForm ? (
+          <View style={styles.createForm}>
+            <View style={compact ? styles.formFieldsCompact : styles.formFieldsWide}>
+              <View style={styles.formField}>
+                <AppInput label="Trip name" value={name} onChangeText={setName} placeholder="Summer in Lisbon" />
+              </View>
+              <View style={styles.formField}>
+                <AppInput label="Destination" value={destination} onChangeText={setDestination} placeholder="Lisbon" />
+              </View>
+            </View>
+            <View style={compact ? styles.formFieldsCompact : styles.formFieldsWide}>
+              <View style={styles.formField}>
+                <AppInput
+                  label="Start date"
+                  value={startDate}
+                  onChangeText={setStartDate}
+                  placeholder="2026-06-10"
+                  helperText="YYYY-MM-DD"
+                />
+              </View>
+              <View style={styles.formField}>
+                <AppInput
+                  label="End date"
+                  value={endDate}
+                  onChangeText={setEndDate}
+                  placeholder="2026-06-17"
+                  helperText="YYYY-MM-DD"
+                />
+              </View>
+            </View>
+            <View style={styles.selectorGroup}>
+              <AppText variant="meta" color="muted">
+                Trip currency
+              </AppText>
+              <View style={styles.selectorWrap}>
+                {MAJOR_CURRENCIES.map((currency) => (
+                  <Chip
+                    key={currency.code}
+                    label={currency.code}
+                    selected={tripCurrencyCode === currency.code}
+                    onPress={() => setTripCurrencyCode(currency.code)}
+                  />
+                ))}
+              </View>
+            </View>
+            {createTripError ? (
+              <AppText variant="bodySm" color="danger">
+                {createTripError}
+              </AppText>
+            ) : null}
+            <AppButton
+              onPress={async () => {
+                try {
+                  setIsCreatingTrip(true);
+                  setCreateTripError(null);
+                  await createTrip({
+                    name: name.trim() || "Untitled trip",
+                    destination: destination.trim() || undefined,
+                    tripCurrencyCode: tripCurrencyCode.trim().toUpperCase() || "USD",
+                    startDate: startDate.trim() || undefined,
+                    endDate: endDate.trim() || undefined
+                  });
+                  setName("");
+                  setDestination("");
+                  setTripCurrencyCode("USD");
+                  setStartDate("");
+                  setEndDate("");
+                } catch (error) {
+                  console.error("Create trip failed", error);
+                  setCreateTripError(getErrorMessage(error));
+                } finally {
+                  setIsCreatingTrip(false);
+                }
+              }}
+              disabled={isCreatingTrip}
+            >
+              {isCreatingTrip ? "Creating..." : "Create trip"}
+            </AppButton>
+          </View>
+        ) : null}
+      </SurfaceCard>
+
+      {/* Summary — hidden on compact to save space */}
+      {!compact ? (
+        <SurfaceCard tone="muted" style={styles.summaryCard}>
+          <View style={styles.summaryRow}>
+            <View style={styles.summaryCopy}>
+              <AppText variant="eyebrow" color="secondary">
+                SplitTrip
+              </AppText>
+              <AppText variant="bodySm" color="secondary">
+                Organize travel spending without hunting through messages.
+              </AppText>
+            </View>
+            <View style={[styles.statRow]}>
+              <View style={styles.statCard}>
+                <AppText variant="meta" color="muted">
+                  Trips
                 </AppText>
-                <AppText variant="bodySm" color="muted">
-                  {trip.startDate ? `${trip.startDate}${trip.endDate ? ` to ${trip.endDate}` : ""}` : "Dates not set"}
+                <AppText variant="sectionTitle">{trips.length}</AppText>
+              </View>
+              <View style={styles.statCard}>
+                <AppText variant="meta" color="muted">
+                  Account
                 </AppText>
-                <AppText variant="bodySm" color="muted">
-                  {trip.createdByUserId === currentUser.id ? "Created by you" : "Shared with you"}
-                </AppText>
-                <AppText variant="bodySm" color="muted">
-                  {trip.members.length} members · {trip.members.filter((member) => member.isLinked).length} linked ·{" "}
-                  {trip.status ?? "active"}
-                </AppText>
-              </SurfaceCard>
-            </Pressable>
-          </Link>
-        ))}
-      </View>
+                <AppText variant="sectionTitle">{authMode === "supabase" ? "Cloud" : "Demo"}</AppText>
+              </View>
+            </View>
+          </View>
+        </SurfaceCard>
+      ) : null}
     </AppScreen>
   );
 }
 
 function createStyles(theme: Theme) {
   return StyleSheet.create({
-  header: {
-    gap: theme.spacing.xs
-  },
-  topGrid: {
-    gap: theme.spacing.md
-  },
-  topGridWide: {
-    flexDirection: "row"
-  },
-  createCard: {
-    flex: 1,
-    gap: theme.spacing.md
-  },
-  summaryCard: {
-    flex: 1,
-    gap: theme.spacing.md
-  },
-  identityCard: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: theme.spacing.md,
-    padding: theme.spacing.md,
-    borderRadius: theme.radius.lg,
-    backgroundColor: theme.colors.surface.base,
-    borderWidth: 1,
-    borderColor: theme.colors.border.subtle
-  },
-  identityCardCompact: {
-    alignItems: "flex-start"
-  },
-  identityCopy: {
-    flex: 1,
-    gap: theme.spacing.xxs
-  },
-  identityName: {
-    fontWeight: theme.type.weight.semibold
-  },
-  identityAvatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: theme.colors.accent.primary,
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  identityAvatarText: {
-    fontWeight: theme.type.weight.bold
-  },
-  selectorGroup: {
-    gap: theme.spacing.sm
-  },
-  selectorWrap: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: theme.spacing.sm
-  },
-  statRow: {
-    flexDirection: "row",
-    gap: theme.spacing.md
-  },
-  statRowCompact: {
-    flexDirection: "column"
-  },
-  statCard: {
-    flex: 1,
-    gap: theme.spacing.xs,
-    padding: theme.spacing.md,
-    borderRadius: theme.radius.lg,
-    backgroundColor: theme.colors.surface.base,
-    borderWidth: 1,
-    borderColor: theme.colors.border.subtle
-  },
-  emptyState: {
-    gap: theme.spacing.sm
-  },
-  tripList: {
-    gap: theme.spacing.md
-  },
-  linkWrapper: {
-    borderRadius: theme.radius.xl
-  },
-  linkWrapperPressed: {
-    opacity: 0.88
-  },
-  tripCard: {
-    gap: theme.spacing.sm
-  },
-  tripHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center"
-  },
-  tripHeaderCompact: {
-    flexWrap: "wrap",
-    gap: theme.spacing.sm
-  },
-  tripBadge: {
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
-    borderRadius: theme.radius.pill,
-    backgroundColor: theme.colors.accent.primary
-  }
+    header: {
+      gap: theme.spacing.xs
+    },
+    /* Trip list */
+    tripList: {
+      gap: theme.spacing.sm
+    },
+    linkWrapper: {
+      borderRadius: theme.radius.xl
+    },
+    linkWrapperPressed: {
+      opacity: 0.88
+    },
+    tripCard: {
+      gap: theme.spacing.xs
+    },
+    tripTopRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      flexWrap: "wrap",
+      gap: theme.spacing.xs
+    },
+    tripBadge: {
+      paddingHorizontal: theme.spacing.sm,
+      paddingVertical: theme.spacing.xxs,
+      borderRadius: theme.radius.pill,
+      backgroundColor: theme.colors.accent.primary
+    },
+    tripMeta: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: theme.spacing.xs
+    },
+    /* Create trip section */
+    createCard: {
+      gap: theme.spacing.md
+    },
+    createToggle: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: theme.spacing.md
+    },
+    createToggleCopy: {
+      flex: 1,
+      gap: theme.spacing.xxs
+    },
+    createForm: {
+      gap: theme.spacing.md
+    },
+    formFieldsCompact: {
+      gap: theme.spacing.md
+    },
+    formFieldsWide: {
+      flexDirection: "row",
+      gap: theme.spacing.md
+    },
+    formField: {
+      flex: 1
+    },
+    selectorGroup: {
+      gap: theme.spacing.sm
+    },
+    selectorWrap: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: theme.spacing.sm
+    },
+    /* Summary section */
+    summaryCard: {
+      gap: theme.spacing.md
+    },
+    summaryRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: theme.spacing.lg
+    },
+    summaryCopy: {
+      flex: 1,
+      gap: theme.spacing.xs
+    },
+    statRow: {
+      flexDirection: "row",
+      gap: theme.spacing.md
+    },
+    statCard: {
+      gap: theme.spacing.xxs,
+      padding: theme.spacing.md,
+      borderRadius: theme.radius.lg,
+      backgroundColor: theme.colors.surface.base,
+      borderWidth: 1,
+      borderColor: theme.colors.border.subtle,
+      alignItems: "center"
+    },
+    /* Empty state */
+    emptyState: {
+      gap: theme.spacing.sm
+    }
   });
 }
