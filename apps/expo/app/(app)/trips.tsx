@@ -1,4 +1,5 @@
 import { Link } from "expo-router";
+import { Head } from "expo-router/head";
 import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 
@@ -41,6 +42,13 @@ export default function TripsScreen() {
 
   return (
     <AppScreen showHeaderMenu>
+      <Head>
+        <title>Trips | SplitTrip</title>
+        <meta
+          name="description"
+          content="Create trips, invite travelers, and track shared travel expenses in one workspace."
+        />
+      </Head>
       <View style={styles.header}>
         <AppText variant="meta" color="secondary">
           Workspace

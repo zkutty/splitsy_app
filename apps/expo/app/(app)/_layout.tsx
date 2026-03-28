@@ -25,9 +25,9 @@ export default function AppLayout() {
         sceneStyle: { backgroundColor: theme.colors.background.canvas }
       }}
     >
-      <Tabs.Screen name="home" options={{ title: "Home" }} />
-      <Tabs.Screen name="trips" options={{ title: "Trips" }} />
-      <Tabs.Screen name="account" options={{ title: "Account" }} />
+      <Tabs.Screen name="home" options={{ title: "Home | SplitTrip" }} />
+      <Tabs.Screen name="trips" options={{ title: "Trips | SplitTrip" }} />
+      <Tabs.Screen name="account" options={{ title: "Account | SplitTrip" }} />
     </Tabs>
   );
 }

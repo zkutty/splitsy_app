@@ -20,7 +20,8 @@ export default function RootHtml({ children }: PropsWithChildren) {
         <meta name="twitter:card" content="summary" />
         <meta name="twitter:title" content={appTitle} />
         <meta name="twitter:description" content={appDescription} />
-        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+        <link rel="icon" href="/favicon.png" type="image/png" />
+        <link rel="apple-touch-icon" href="/favicon.png" />
         <ScrollViewStyleReset />
       </head>
       <body>{children}</body>

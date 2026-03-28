@@ -1,4 +1,5 @@
 import { Link } from "expo-router";
+import { Head } from "expo-router/head";
 import { useMemo } from "react";
 import { Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 
@@ -21,6 +22,10 @@ export default function HomeScreen() {
 
   return (
     <AppScreen showHeaderMenu>
+      <Head>
+        <title>Home | SplitTrip</title>
+        <meta name="description" content="Open your shared travel workspaces and pick up where you left off." />
+      </Head>
       <SurfaceCard tone="hero" style={styles.heroCard}>
         <AppText variant="eyebrow" color="accent">
           Home
