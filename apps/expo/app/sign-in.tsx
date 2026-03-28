@@ -1,5 +1,4 @@
 import { Redirect } from "expo-router";
-import { Head } from "expo-router/head";
 import { useMemo } from "react";
 import { StyleSheet, View, useWindowDimensions } from "react-native";
 
@@ -26,10 +25,6 @@ export default function SignInScreen() {
 
   return (
     <AuthScreen>
-      <Head>
-        <title>SplitTrip | Shared travel expenses</title>
-        <meta name="description" content="Track group travel spending, split costs fairly, and settle in one pass." />
-      </Head>
       <View style={[styles.layout, wide ? styles.layoutWide : null]}>
         <View style={styles.brandColumn}>
           <BrandMark size="hero" style={styles.brandMark} />
