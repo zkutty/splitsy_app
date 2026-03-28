@@ -20,7 +20,7 @@ export default function HomeScreen() {
   const activeTripCount = trips.filter((trip) => (trip.status ?? "active") === "active").length;
 
   return (
-    <AppScreen>
+    <AppScreen showHeaderMenu>
       <SurfaceCard tone="hero" style={styles.heroCard}>
         <AppText variant="eyebrow" color="accent">
           Home

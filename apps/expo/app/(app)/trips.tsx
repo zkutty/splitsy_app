@@ -40,7 +40,7 @@ export default function TripsScreen() {
   };
 
   return (
-    <AppScreen>
+    <AppScreen showHeaderMenu>
       <View style={styles.header}>
         <AppText variant="meta" color="secondary">
           Workspace

@@ -1,6 +1,5 @@
 import { Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 import { useMemo } from "react";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useTrips } from "../../providers/trips-provider";
 import { AppButton } from "../primitives/AppButton";
@@ -20,7 +19,6 @@ export function AppTabBar({ state, navigation }: AppTabBarProps) {
   const { theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { width } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
   const wide = width >= 960;
   const { currentUser, signOut } = useTrips();
 
@@ -82,43 +80,7 @@ export function AppTabBar({ state, navigation }: AppTabBarProps) {
     );
   }
 
-  return (
-    <View style={[styles.mobileShell, { paddingBottom: Math.max(theme.spacing.sm, insets.bottom) }]}>
-      <View style={styles.mobileNav}>
-        {state.routes.map((route: { key: string; name: string; params?: object }, index: number) => {
-          const focused = state.index === index;
-          const label = LABELS[route.name] ?? route.name;
-
-          return (
-            <Pressable
-              key={route.key}
-              onPress={() => {
-                const event = navigation.emit({
-                  type: "tabPress",
-                  target: route.key,
-                  canPreventDefault: true
-                });
-
-                if (!focused && !event.defaultPrevented) {
-                  navigation.navigate(route.name, route.params);
-                }
-              }}
-              hitSlop={6}
-              style={({ pressed }) => [
-                styles.mobileNavItem,
-                focused ? styles.mobileNavItemActive : null,
-                pressed ? styles.mobileNavItemPressed : null
-              ]}
-            >
-              <AppText variant="bodySm" color={focused ? "inverse" : "muted"} style={styles.mobileNavLabel}>
-                {label}
-              </AppText>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
-  );
+  return null;
 }
 
 function createStyles(theme: Theme) {

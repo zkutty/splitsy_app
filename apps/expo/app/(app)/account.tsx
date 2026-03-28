@@ -19,7 +19,7 @@ export default function AccountScreen() {
   const compact = width < 520;
 
   return (
-    <AppScreen maxWidth={880}>
+    <AppScreen maxWidth={880} showHeaderMenu>
       <SurfaceCard tone="hero" style={styles.heroCard}>
         <AppText variant="eyebrow" color="accent">
           Account

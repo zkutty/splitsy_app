@@ -2,18 +2,22 @@ import { PropsWithChildren, useMemo } from "react";
 import { Platform, ScrollView, StyleProp, StyleSheet, View, ViewStyle, useWindowDimensions } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { AppHeaderMenu } from "../navigation/AppHeaderMenu";
+import { BrandMark } from "../navigation/BrandMark";
 import { Theme, useAppTheme } from "../theme";
 
 type AppScreenProps = PropsWithChildren<{
   maxWidth?: number;
   contentStyle?: StyleProp<ViewStyle>;
+  showHeaderMenu?: boolean;
 }>;
 
-export function AppScreen({ children, maxWidth, contentStyle }: AppScreenProps) {
+export function AppScreen({ children, maxWidth, contentStyle, showHeaderMenu = false }: AppScreenProps) {
   const { theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const showMobileHeader = showHeaderMenu && width < 960;
   const contentMaxWidth = width < 768 ? theme.layout.contentWidth : (maxWidth ?? theme.layout.maxWidth);
 
   return (
@@ -29,7 +33,15 @@ export function AppScreen({ children, maxWidth, contentStyle }: AppScreenProps) 
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
       >
-        <View style={[styles.shell, { maxWidth: contentMaxWidth }, contentStyle]}>{children}</View>
+        <View style={[styles.shell, { maxWidth: contentMaxWidth }, contentStyle]}>
+          {showMobileHeader ? (
+            <View style={styles.mobileHeader}>
+              <BrandMark compact />
+              <AppHeaderMenu />
+            </View>
+          ) : null}
+          {children}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -50,6 +62,12 @@ function createStyles(theme: Theme) {
       alignSelf: "center",
       gap: theme.spacing.lg,
       ...(Platform.OS === "web" ? { minHeight: "100%" as const } : null)
+    },
+    mobileHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: theme.spacing.md
     }
   });
 }
