@@ -52,7 +52,15 @@ export default function JoinTripScreen() {
     return () => {
       cancelled = true;
     };
-  }, [acceptTripInvite, hasAttemptedJoin, isLoading, router, session, token]);
+  }, [
+    acceptTripInvite,
+    hasAttemptedJoin,
+    router,
+    session.isAuthenticated,
+    session.isLoading,
+    session.setPendingPostAuthPath,
+    token
+  ]);
 
   return (
     <AppScreen maxWidth={560}>
