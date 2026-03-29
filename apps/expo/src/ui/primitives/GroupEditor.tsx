@@ -75,10 +75,10 @@ export function GroupEditor({ visible, title, initialName = "", onClose, onSave 
             )}
 
             <View style={styles.actions}>
-              <AppButton onPress={handleClose} variant="secondary" disabled={isSaving} fullWidth>
+              <AppButton onPress={handleClose} variant="secondary" disabled={isSaving} style={styles.actionButton}>
                 Cancel
               </AppButton>
-              <AppButton onPress={handleSave} disabled={isSaving || !name.trim()} fullWidth>
+              <AppButton onPress={handleSave} disabled={isSaving || !name.trim()} style={styles.actionButton}>
                 {isSaving ? "Saving..." : "Save"}
               </AppButton>
             </View>
@@ -108,7 +108,11 @@ function createStyles(theme: Theme) {
     actions: {
       flexDirection: "row",
       gap: theme.spacing.sm,
-      marginTop: theme.spacing.sm
+      marginTop: theme.spacing.sm,
+      width: "100%"
+    },
+    actionButton: {
+      flex: 1
     }
   });
 }
