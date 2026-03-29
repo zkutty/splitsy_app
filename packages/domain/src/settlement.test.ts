@@ -17,6 +17,8 @@ test("settles equal split expenses into minimized transfers", () => {
       category: "food",
       paidByMemberId: "a",
       involvedMemberIds: ["a", "b", "c"],
+      splitMode: "equal",
+      splitShares: null,
       createdAt: "2026-03-25T10:00:00.000Z"
     },
     {
@@ -30,6 +32,8 @@ test("settles equal split expenses into minimized transfers", () => {
       category: "transport",
       paidByMemberId: "b",
       involvedMemberIds: ["a", "b"],
+      splitMode: "equal",
+      splitShares: null,
       createdAt: "2026-03-25T10:05:00.000Z"
     }
   ];
@@ -76,6 +80,8 @@ test("settles expenses with groups", () => {
       category: "food",
       paidByMemberId: "alice",
       involvedMemberIds: ["alice", "bob", "charlie", "dave"],
+      splitMode: "equal",
+      splitShares: null,
       createdAt: "2026-03-25T10:00:00.000Z"
     },
     {
@@ -89,6 +95,8 @@ test("settles expenses with groups", () => {
       category: "transport",
       paidByMemberId: "charlie",
       involvedMemberIds: ["alice", "charlie", "dave"],
+      splitMode: "equal",
+      splitShares: null,
       createdAt: "2026-03-25T10:05:00.000Z"
     },
     {
@@ -102,6 +110,8 @@ test("settles expenses with groups", () => {
       category: "activities",
       paidByMemberId: "bob",
       involvedMemberIds: ["alice", "bob"],
+      splitMode: "equal",
+      splitShares: null,
       createdAt: "2026-03-25T10:10:00.000Z"
     }
   ];
@@ -161,7 +171,9 @@ test("validates required expense draft fields", () => {
     customCategory: "",
     note: "",
     paidByMemberId: "",
-    involvedMemberIds: []
+    involvedMemberIds: [],
+    splitMode: "equal",
+    splitShares: null
   });
 
   expect(result.ok).toBe(false);
@@ -171,4 +183,174 @@ test("validates required expense draft fields", () => {
   }
 
   expect(result.errors.length).toBe(6);
+});
+
+test("settles expenses with byAmount split", () => {
+  // Alice pays $100 for dinner, but Bob had the expensive steak ($60), Alice had $40
+  const expenses: Expense[] = [
+    {
+      id: "1",
+      tripId: "trip",
+      expenseDate: "2026-03-25",
+      amount: 100,
+      currencyCode: "USD",
+      conversionRateToTripCurrency: 1,
+      tripAmount: 100,
+      category: "food",
+      paidByMemberId: "a",
+      involvedMemberIds: ["a", "b"],
+      splitMode: "byAmount",
+      splitShares: { a: 40, b: 60 },
+      createdAt: "2026-03-25T10:00:00.000Z"
+    }
+  ];
+
+  const members: Member[] = [
+    { id: "a", displayName: "Alice" },
+    { id: "b", displayName: "Bob" }
+  ];
+
+  const settlement = settleTrip(expenses, members, [], "USD");
+
+  expect(settlement.totalTripSpend).toBe(100);
+
+  // Alice paid 100, owes 40 → net +60
+  const alice = settlement.balances.find(
+    (b) => b.entity.type === "member" && b.entity.memberId === "a"
+  );
+  expect(alice!.paid).toBe(100);
+  expect(alice!.owed).toBe(40);
+  expect(alice!.net).toBe(60);
+
+  // Bob paid 0, owes 60 → net -60
+  const bob = settlement.balances.find(
+    (b) => b.entity.type === "member" && b.entity.memberId === "b"
+  );
+  expect(bob!.paid).toBe(0);
+  expect(bob!.owed).toBe(60);
+  expect(bob!.net).toBe(-60);
+
+  // One transfer: Bob pays Alice $60
+  expect(settlement.transfers).toEqual([
+    {
+      fromEntity: { type: "member", memberId: "b" },
+      toEntity: { type: "member", memberId: "a" },
+      amount: 60,
+      currencyCode: "USD",
+      fromDisplayName: "Bob",
+      toDisplayName: "Alice"
+    }
+  ]);
+});
+
+test("settles expenses with byPercentage split", () => {
+  // Charlie pays $200 for a hotel room, split 60/25/15
+  const expenses: Expense[] = [
+    {
+      id: "1",
+      tripId: "trip",
+      expenseDate: "2026-03-25",
+      amount: 200,
+      currencyCode: "USD",
+      conversionRateToTripCurrency: 1,
+      tripAmount: 200,
+      category: "lodging",
+      paidByMemberId: "c",
+      involvedMemberIds: ["a", "b", "c"],
+      splitMode: "byPercentage",
+      splitShares: { a: 25, b: 15, c: 60 },
+      createdAt: "2026-03-25T10:00:00.000Z"
+    }
+  ];
+
+  const members: Member[] = [
+    { id: "a", displayName: "Alice" },
+    { id: "b", displayName: "Bob" },
+    { id: "c", displayName: "Charlie" }
+  ];
+
+  const settlement = settleTrip(expenses, members, [], "USD");
+
+  expect(settlement.totalTripSpend).toBe(200);
+
+  // Charlie paid 200, owes 60% = 120 → net +80
+  const charlie = settlement.balances.find(
+    (b) => b.entity.type === "member" && b.entity.memberId === "c"
+  );
+  expect(charlie!.paid).toBe(200);
+  expect(charlie!.owed).toBe(120);
+  expect(charlie!.net).toBe(80);
+
+  // Alice paid 0, owes 25% = 50 → net -50
+  const alice = settlement.balances.find(
+    (b) => b.entity.type === "member" && b.entity.memberId === "a"
+  );
+  expect(alice!.owed).toBe(50);
+  expect(alice!.net).toBe(-50);
+
+  // Bob paid 0, owes 15% = 30 → net -30
+  const bob = settlement.balances.find(
+    (b) => b.entity.type === "member" && b.entity.memberId === "b"
+  );
+  expect(bob!.owed).toBe(30);
+  expect(bob!.net).toBe(-30);
+
+  // Two transfers: Alice→Charlie $50, Bob→Charlie $30
+  expect(settlement.transfers.length).toBe(2);
+  expect(settlement.transfers[0].amount).toBe(50);
+  expect(settlement.transfers[1].amount).toBe(30);
+});
+
+test("validates byAmount shares must sum to expense total", () => {
+  const result = validateExpenseDraft({
+    expenseDate: "2026-03-25",
+    amount: 100,
+    currencyCode: "USD",
+    category: "food",
+    paidByMemberId: "a",
+    involvedMemberIds: ["a", "b"],
+    splitMode: "byAmount",
+    splitShares: { a: 40, b: 50 }
+  });
+
+  expect(result.ok).toBe(false);
+  if (!result.ok) {
+    expect(result.errors.some((e) => e.includes("add up to the expense total"))).toBe(true);
+  }
+});
+
+test("validates byPercentage shares must sum to 100", () => {
+  const result = validateExpenseDraft({
+    expenseDate: "2026-03-25",
+    amount: 100,
+    currencyCode: "USD",
+    category: "food",
+    paidByMemberId: "a",
+    involvedMemberIds: ["a", "b"],
+    splitMode: "byPercentage",
+    splitShares: { a: 40, b: 50 }
+  });
+
+  expect(result.ok).toBe(false);
+  if (!result.ok) {
+    expect(result.errors.some((e) => e.includes("100%"))).toBe(true);
+  }
+});
+
+test("validates custom split requires shares for all members", () => {
+  const result = validateExpenseDraft({
+    expenseDate: "2026-03-25",
+    amount: 100,
+    currencyCode: "USD",
+    category: "food",
+    paidByMemberId: "a",
+    involvedMemberIds: ["a", "b", "c"],
+    splitMode: "byAmount",
+    splitShares: { a: 50, b: 50 }
+  });
+
+  expect(result.ok).toBe(false);
+  if (!result.ok) {
+    expect(result.errors.some((e) => e.includes("Every involved member"))).toBe(true);
+  }
 });
