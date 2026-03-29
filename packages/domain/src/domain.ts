@@ -25,6 +25,13 @@ export type Member = {
   isLinked?: boolean;
   status?: MemberStatus;
   removedAt?: string | null;
+  groupId?: string | null;
+};
+
+export type MemberGroup = {
+  id: string;
+  name: string;
+  memberIds: string[];
 };
 
 export type UserProfile = {
@@ -49,6 +56,7 @@ export type Trip = {
   completedByUserId?: string | null;
   settledAt?: string | null;
   members: Member[];
+  groups: MemberGroup[];
 };
 
 export type ExpenseCategory = {
@@ -88,23 +96,44 @@ export type ExpenseDraft = {
   involvedMemberIds: string[];
 };
 
+export type SettlementEntity =
+  | { type: 'member'; memberId: string }
+  | { type: 'group'; groupId: string };
+
 export type SettlementBalance = {
-  memberId: string;
+  entity: SettlementEntity;
   paid: number;
   owed: number;
   net: number;
+  displayName: string;
+  isGroup: boolean;
+  memberBalances?: Array<{
+    memberId: string;
+    displayName: string;
+    paid: number;
+    owed: number;
+    net: number;
+  }>;
 };
 
 export type SettlementTransfer = {
-  fromMemberId: string;
-  toMemberId: string;
+  fromEntity: SettlementEntity;
+  toEntity: SettlementEntity;
   amount: number;
   currencyCode: CurrencyCode;
+  fromDisplayName: string;
+  toDisplayName: string;
 };
 
-export type TripSettlementTransfer = SettlementTransfer & {
+export type TripSettlementTransfer = {
   id: string;
   tripId: string;
+  fromEntity: SettlementEntity;
+  toEntity: SettlementEntity;
+  amount: number;
+  currencyCode: CurrencyCode;
+  fromDisplayName: string;
+  toDisplayName: string;
   status: SettlementTransferStatus;
   paidMarkedAt?: string | null;
   paidMarkedByUserId?: string | null;

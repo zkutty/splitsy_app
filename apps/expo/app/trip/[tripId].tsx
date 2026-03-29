@@ -4,7 +4,7 @@ import * as Linking from "expo-linking";
 import { Platform, Share, StyleSheet, View, useWindowDimensions } from "react-native";
 
 import { PRESET_CATEGORIES, settleTrip, validateExpenseDraft } from "@splitsy/domain";
-import type { Expense, PaymentMethodType, TripSettlementTransfer } from "@splitsy/domain";
+import type { Expense, MemberGroup, PaymentMethodType, TripSettlementTransfer } from "@splitsy/domain";
 
 import { formatCurrency } from "../../src/lib/format";
 import { buildPaymentLink, getPaymentMethodLabel } from "../../src/lib/payment-links";
@@ -19,6 +19,9 @@ import { Chip } from "../../src/ui/primitives/Chip";
 import { CurrencyPicker } from "../../src/ui/primitives/CurrencyPicker";
 import { SectionCard } from "../../src/ui/primitives/SectionCard";
 import { SurfaceCard } from "../../src/ui/primitives/SurfaceCard";
+import { GroupCard } from "../../src/ui/primitives/GroupCard";
+import { GroupEditor } from "../../src/ui/primitives/GroupEditor";
+import { ExpandableBalance } from "../../src/ui/primitives/ExpandableBalance";
 import { Theme, useAppTheme } from "../../src/ui/theme";
 
 export default function TripDetailsScreen() {
@@ -44,7 +47,13 @@ export default function TripDetailsScreen() {
     addTripMember,
     removeTripMember,
     isLoading,
-    getPaymentMethodForUser
+    getPaymentMethodForUser,
+    createGroup,
+    updateGroup,
+    deleteGroup,
+    addMemberToGroup,
+    removeMemberFromGroup,
+    getGroupsForTrip
   } = useTrips();
   const { theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -54,6 +63,7 @@ export default function TripDetailsScreen() {
   const mayCompleteTrip = canCompleteTrip(tripId);
   const expenses = getExpensesForTrip(tripId);
   const persistedTransfers = getSettlementTransfersForTrip(tripId);
+  const groups = getGroupsForTrip(tripId);
   const { width } = useWindowDimensions();
   const wide = width >= 1040;
   const compact = width < 768;
@@ -80,6 +90,8 @@ export default function TripDetailsScreen() {
   const [activeMemberId, setActiveMemberId] = useState<string | null>(null);
   const [memberPendingRemovalId, setMemberPendingRemovalId] = useState<string | null>(null);
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
+  const [showGroupEditor, setShowGroupEditor] = useState(false);
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
 
   // Payment method cache: maps userId -> { type, handle }
   const [paymentMethods, setPaymentMethods] = useState<
@@ -186,10 +198,11 @@ export default function TripDetailsScreen() {
 
     return settleTrip(
       expenses,
-      trip.members.map((member) => member.id),
+      trip.members,
+      groups,
       trip.tripCurrencyCode
     );
-  }, [expenses, trip]);
+  }, [expenses, trip, groups]);
 
   const tripCreator = trip?.members.find((member) => member.userId === trip.createdByUserId);
   const isTripActive = trip?.status === "active";
@@ -269,6 +282,30 @@ export default function TripDetailsScreen() {
     setSelectedMembers((current) =>
       current.includes(memberId) ? current.filter((id) => id !== memberId) : [...current, memberId]
     );
+  };
+
+  const toggleGroup = (groupId: string) => {
+    const group = groups.find((g) => g.id === groupId);
+    if (!group) return;
+
+    const allSelected = group.memberIds.every((id) => selectedMembers.includes(id));
+
+    setSelectedMembers((current) => {
+      if (allSelected) {
+        // Deselect all members in the group
+        return current.filter((id) => !group.memberIds.includes(id));
+      } else {
+        // Select all members in the group
+        const newMembers = group.memberIds.filter((id) => !current.includes(id));
+        return [...current, ...newMembers];
+      }
+    });
+  };
+
+  const isGroupSelected = (groupId: string) => {
+    const group = groups.find((g) => g.id === groupId);
+    if (!group) return false;
+    return group.memberIds.every((id) => selectedMembers.includes(id));
   };
 
   const getMemberStatusText = (member: (typeof trip.members)[number]) => {
@@ -423,6 +460,38 @@ export default function TripDetailsScreen() {
     }
   };
 
+  const handleCreateGroup = async (name: string) => {
+    await createGroup(tripId, name);
+  };
+
+  const handleUpdateGroup = async (name: string) => {
+    if (!editingGroupId) return;
+    await updateGroup(editingGroupId, name);
+  };
+
+  const handleDeleteGroup = async (groupId: string) => {
+    await deleteGroup(groupId);
+  };
+
+  const handleRemoveMemberFromGroup = async (memberId: string) => {
+    await removeMemberFromGroup(tripId, memberId);
+  };
+
+  const openCreateGroupModal = () => {
+    setEditingGroupId(null);
+    setShowGroupEditor(true);
+  };
+
+  const openEditGroupModal = (groupId: string) => {
+    setEditingGroupId(groupId);
+    setShowGroupEditor(true);
+  };
+
+  const ungroupedMembers = useMemo(
+    () => activeMembers.filter((member) => !member.groupId),
+    [activeMembers]
+  );
+
   const runCompleteTrip = async () => {
     if (!mayCompleteTrip) {
       return;
@@ -459,7 +528,23 @@ export default function TripDetailsScreen() {
 
   const getPaymentLinkForTransfer = (transfer: TripSettlementTransfer) => {
     if (!trip) return null;
-    const recipient = trip.members.find((m) => m.id === transfer.toMemberId);
+
+    // For group transfers, find any member of the group with a payment method
+    if (transfer.toEntity.type === 'group') {
+      const groupMembers = trip.members.filter((m) => m.groupId === transfer.toEntity.groupId);
+      for (const member of groupMembers) {
+        if (!member.userId) continue;
+        const pm = paymentMethods[member.userId];
+        if (pm?.type && pm?.handle) {
+          const note = `${trip.name} settlement`;
+          return buildPaymentLink(pm.type, pm.handle, transfer.amount, note);
+        }
+      }
+      return null;
+    }
+
+    // For member transfers
+    const recipient = trip.members.find((m) => m.id === transfer.toEntity.memberId);
     if (!recipient?.userId) return null;
     const pm = paymentMethods[recipient.userId];
     if (!pm?.type || !pm?.handle) return null;
@@ -716,6 +801,15 @@ export default function TripDetailsScreen() {
                 Involved members
               </AppText>
               <View style={styles.chipWrap}>
+                {groups.map((group) => (
+                  <Chip
+                    key={`group-${group.id}`}
+                    label={`${group.name} (${group.memberIds.length})`}
+                    selected={isGroupSelected(group.id)}
+                    onPress={isTripActive ? () => toggleGroup(group.id) : undefined}
+                    tone="success"
+                  />
+                ))}
                 {expenseFormMembers.map((member) => {
                   const selected = selectedMembers.includes(member.id);
 
@@ -808,27 +902,17 @@ export default function TripDetailsScreen() {
         <View style={styles.secondaryColumn}>
           <SectionCard title="Balances" description="Positive values are owed back. Negative values still owe the group.">
             {settlement?.balances.map((balance) => {
-              const member = trip.members.find((item) => item.id === balance.memberId);
+              const key = balance.entity.type === 'group'
+                ? `g:${balance.entity.groupId}`
+                : `m:${balance.entity.memberId}`;
 
               return (
-                <View key={balance.memberId} style={[styles.rowCard, compact ? styles.rowCardCompact : null]}>
-                  <View style={styles.rowCopy}>
-                    <AppText variant="bodySm" color="secondary" style={styles.rowTitle}>
-                      {member?.displayName ?? balance.memberId}
-                    </AppText>
-                    <AppText variant="bodySm" color="muted">
-                      Paid {fmt(balance.paid)} · Owes{" "}
-                      {fmt(balance.owed)}
-                    </AppText>
-                  </View>
-                  <AppText
-                    variant="bodySm"
-                    color={balance.net < 0 ? "danger" : balance.net > 0 ? "success" : "muted"}
-                    style={styles.netAmount}
-                  >
-                    {fmt(balance.net)}
-                  </AppText>
-                </View>
+                <ExpandableBalance
+                  key={key}
+                  balance={balance}
+                  formatAmount={fmt}
+                  compact={compact}
+                />
               );
             })}
           </SectionCard>
@@ -836,15 +920,12 @@ export default function TripDetailsScreen() {
           {trip.status === "active" ? (
             <SectionCard title="Repayments" description="SplitTrip minimizes the number of transfers needed to settle up.">
               {settlement?.transfers.length ? (
-                settlement.transfers.map((transfer) => {
-                  const from = trip.members.find((member) => member.id === transfer.fromMemberId);
-                  const to = trip.members.find((member) => member.id === transfer.toMemberId);
-
+                settlement.transfers.map((transfer, index) => {
                   return (
-                    <View key={`${transfer.fromMemberId}-${transfer.toMemberId}`} style={[styles.rowCard, compact ? styles.rowCardCompact : null]}>
+                    <View key={`transfer-${index}`} style={[styles.rowCard, compact ? styles.rowCardCompact : null]}>
                       <View style={styles.rowCopy}>
                         <AppText variant="bodySm" color="secondary" style={styles.rowTitle}>
-                          {from?.displayName} pays {to?.displayName}
+                          {transfer.fromDisplayName} pays {transfer.toDisplayName}
                         </AppText>
                       </View>
                       <AppText variant="bodySm" color="primary" style={styles.netAmount}>
@@ -863,14 +944,11 @@ export default function TripDetailsScreen() {
             <SectionCard title="Final payments" description="These transfers were saved when the trip was completed.">
               {persistedTransfers.length ? (
                 persistedTransfers.map((transfer) => {
-                  const from = trip.members.find((member) => member.id === transfer.fromMemberId);
-                  const to = trip.members.find((member) => member.id === transfer.toMemberId);
-
                   return (
                     <View key={transfer.id} style={[styles.rowCard, compact ? styles.rowCardCompact : null]}>
                       <View style={styles.rowCopy}>
                         <AppText variant="bodySm" color="secondary" style={styles.rowTitle}>
-                          {from?.displayName} pays {to?.displayName}
+                          {transfer.fromDisplayName} pays {transfer.toDisplayName}
                         </AppText>
                         <AppText variant="bodySm" color="muted">
                           Status: {transfer.status}
@@ -931,10 +1009,92 @@ export default function TripDetailsScreen() {
                 ) : null}
               </View>
             ) : null}
+
+            {mayManageTrip && isTripActive && groups.length === 0 && (
+              <View style={styles.group}>
+                <AppText variant="bodySm" color="muted">
+                  Create groups to combine members for settlement (e.g., families or couples)
+                </AppText>
+                <AppButton onPress={openCreateGroupModal} variant="secondary">
+                  Create first group
+                </AppButton>
+              </View>
+            )}
+
+            {groups.length > 0 && (
+              <View style={styles.membersGroup}>
+                <View style={styles.membersHeaderRow}>
+                  <AppText variant="meta" color="muted">
+                    Groups
+                  </AppText>
+                  <AppText variant="bodySm" color="muted">
+                    {groups.length} {groups.length === 1 ? "group" : "groups"}
+                  </AppText>
+                </View>
+                {mayManageTrip && isTripActive && (
+                  <AppButton onPress={openCreateGroupModal} variant="secondary" fullWidth={false}>
+                    Create group
+                  </AppButton>
+                )}
+                <View style={styles.memberList}>
+                  {groups.map((group) => (
+                    <GroupCard
+                      key={group.id}
+                      group={group}
+                      members={trip.members}
+                      canEdit={mayManageTrip && isTripActive}
+                      onEdit={() => openEditGroupModal(group.id)}
+                      onDelete={() => handleDeleteGroup(group.id)}
+                      onRemoveMember={handleRemoveMemberFromGroup}
+                      compact={compact}
+                    />
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {ungroupedMembers.length > 0 && (
+              <View style={styles.membersGroup}>
+                <View style={styles.membersHeaderRow}>
+                  <AppText variant="meta" color="muted">
+                    Ungrouped members
+                  </AppText>
+                  <AppText variant="bodySm" color="muted">
+                    {ungroupedMembers.length} {ungroupedMembers.length === 1 ? "member" : "members"}
+                  </AppText>
+                </View>
+                <View style={styles.memberList}>
+                  {ungroupedMembers.map((member) => (
+                    <SurfaceCard key={member.id}>
+                      <View style={styles.ungroupedMemberRow}>
+                        <AppText variant="bodySm" color="secondary">
+                          {member.displayName}
+                        </AppText>
+                        {mayManageTrip && isTripActive && groups.length > 0 && (
+                          <View style={styles.chipWrap}>
+                            {groups.map((group) => (
+                              <AppButton
+                                key={group.id}
+                                onPress={() => addMemberToGroup(tripId, member.id, group.id)}
+                                variant="secondary"
+                                fullWidth={false}
+                              >
+                                Add to {group.name}
+                              </AppButton>
+                            ))}
+                          </View>
+                        )}
+                      </View>
+                    </SurfaceCard>
+                  ))}
+                </View>
+              </View>
+            )}
+
             <View style={styles.membersGroup}>
               <View style={styles.membersHeaderRow}>
                 <AppText variant="meta" color="muted">
-                  Current members
+                  All members
                 </AppText>
                 <AppText variant="bodySm" color="muted">
                   {activeMembers.length} active
@@ -1078,6 +1238,17 @@ export default function TripDetailsScreen() {
           </SectionCard>
         </View>
       </View>
+
+      <GroupEditor
+        visible={showGroupEditor}
+        title={editingGroupId ? "Edit group" : "Create group"}
+        initialName={editingGroupId ? groups.find((g) => g.id === editingGroupId)?.name ?? "" : ""}
+        onClose={() => {
+          setShowGroupEditor(false);
+          setEditingGroupId(null);
+        }}
+        onSave={editingGroupId ? handleUpdateGroup : handleCreateGroup}
+      />
     </AppScreen>
   );
 }
@@ -1121,6 +1292,15 @@ function createStyles(theme: Theme) {
   },
   memberList: {
     gap: theme.spacing.sm
+  },
+  ungroupedMemberRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: theme.spacing.md,
+    padding: theme.spacing.md,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.surface.base
   },
   memberCard: {
     gap: theme.spacing.md
