@@ -2,6 +2,7 @@ export type CurrencyCode = string;
 export type TripStatus = "active" | "completed" | "settled";
 export type SettlementTransferStatus = "pending" | "paid" | "confirmed";
 export type MemberStatus = "active" | "removed";
+export type PaymentMethodType = "venmo" | "paypal" | "cashapp";
 
 export type ExpenseCategoryId =
   | "lodging"
@@ -31,6 +32,8 @@ export type UserProfile = {
   email?: string | null;
   displayName: string;
   avatarUrl?: string | null;
+  paymentMethodType?: PaymentMethodType | null;
+  paymentMethodHandle?: string | null;
 };
 
 export type Trip = {

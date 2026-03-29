@@ -1,4 +1,4 @@
-import type { Expense, Trip, TripSettlementTransfer, UserProfile } from "@splitsy/domain";
+import type { Expense, PaymentMethodType, Trip, TripSettlementTransfer, UserProfile } from "@splitsy/domain";
 import { settleTrip } from "@splitsy/domain";
 import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useState } from "react";
 import { AppState, Platform } from "react-native";
@@ -38,6 +38,9 @@ type TripsContextValue = {
   addExpense: (tripId: string, draft: AddExpenseInput) => Promise<void>;
   updateExpense: (expenseId: string, tripId: string, draft: AddExpenseInput) => Promise<void>;
   deleteExpense: (expenseId: string) => Promise<void>;
+  updatePaymentMethod: (type: PaymentMethodType | null, handle: string | null) => Promise<void>;
+  getPaymentMethod: () => Promise<{ type: PaymentMethodType | null; handle: string | null }>;
+  getPaymentMethodForUser: (userId: string) => Promise<{ type: PaymentMethodType | null; handle: string | null }>;
 };
 
 const TRIPS_CONTEXT_KEY = "__splittrip_trips_context__";
@@ -344,6 +347,15 @@ export function TripsProvider({ children }: PropsWithChildren) {
       deleteExpense: async (expenseId) => {
         await repository.deleteExpense(expenseId);
         setExpenses((current) => current.filter((item) => item.id !== expenseId));
+      },
+      updatePaymentMethod: async (type, handle) => {
+        await repository.updatePaymentMethod(type, handle);
+      },
+      getPaymentMethod: async () => {
+        return repository.getPaymentMethod();
+      },
+      getPaymentMethodForUser: async (userId) => {
+        return repository.getPaymentMethodForUser(userId);
       }
     }),
     [currentUser, expenses, isLoading, repository, session.authMode, session.signOut, session.user, settlementTransfers, trips]

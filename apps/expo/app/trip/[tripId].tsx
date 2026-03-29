@@ -4,9 +4,10 @@ import * as Linking from "expo-linking";
 import { Platform, Share, StyleSheet, View, useWindowDimensions } from "react-native";
 
 import { PRESET_CATEGORIES, settleTrip, validateExpenseDraft } from "@splitsy/domain";
-import type { Expense, TripSettlementTransfer } from "@splitsy/domain";
+import type { Expense, PaymentMethodType, TripSettlementTransfer } from "@splitsy/domain";
 
 import { formatCurrency } from "../../src/lib/format";
+import { buildPaymentLink, getPaymentMethodLabel } from "../../src/lib/payment-links";
 import { fetchConversionRate } from "../../src/lib/rates";
 import { useSession } from "../../src/providers/session-provider";
 import { useTrips } from "../../src/providers/trips-provider";
@@ -42,7 +43,8 @@ export default function TripDetailsScreen() {
     deleteExpense,
     addTripMember,
     removeTripMember,
-    isLoading
+    isLoading,
+    getPaymentMethodForUser
   } = useTrips();
   const { theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -78,6 +80,11 @@ export default function TripDetailsScreen() {
   const [activeMemberId, setActiveMemberId] = useState<string | null>(null);
   const [memberPendingRemovalId, setMemberPendingRemovalId] = useState<string | null>(null);
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
+
+  // Payment method cache: maps userId -> { type, handle }
+  const [paymentMethods, setPaymentMethods] = useState<
+    Record<string, { type: PaymentMethodType | null; handle: string | null }>
+  >({});
 
   // Display currency — lets the user view all totals/settlements in a different currency
   const [displayCurrency, setDisplayCurrency] = useState(trip?.tripCurrencyCode ?? "USD");
@@ -135,6 +142,36 @@ export default function TripDetailsScreen() {
       cancelled = true;
     };
   }, [displayCurrency, trip?.tripCurrencyCode]);
+
+  // Load payment methods for transfer recipients when trip is completed
+  useEffect(() => {
+    if (!trip || trip.status === "active" || !persistedTransfers.length) return;
+
+    const recipientUserIds = new Set<string>();
+    for (const transfer of persistedTransfers) {
+      const member = trip.members.find((m) => m.id === transfer.toMemberId);
+      if (member?.userId && !paymentMethods[member.userId]) {
+        recipientUserIds.add(member.userId);
+      }
+    }
+
+    if (recipientUserIds.size === 0) return;
+
+    let cancelled = false;
+    for (const userId of recipientUserIds) {
+      getPaymentMethodForUser(userId)
+        .then((pm) => {
+          if (!cancelled) {
+            setPaymentMethods((prev) => ({ ...prev, [userId]: pm }));
+          }
+        })
+        .catch(() => {});
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [trip?.id, trip?.status, persistedTransfers.length]);
 
   useEffect(() => {
     if (!editingExpenseId) {
@@ -420,17 +457,40 @@ export default function TripDetailsScreen() {
     }
   };
 
+  const getPaymentLinkForTransfer = (transfer: TripSettlementTransfer) => {
+    if (!trip) return null;
+    const recipient = trip.members.find((m) => m.id === transfer.toMemberId);
+    if (!recipient?.userId) return null;
+    const pm = paymentMethods[recipient.userId];
+    if (!pm?.type || !pm?.handle) return null;
+    const note = `${trip.name} settlement`;
+    return buildPaymentLink(pm.type, pm.handle, transfer.amount, note);
+  };
+
   const renderPersistedTransferActions = (transfer: TripSettlementTransfer) => {
     if (canMarkSettlementTransferPaid(transfer.id)) {
+      const payLink = getPaymentLinkForTransfer(transfer);
+
       return (
-        <AppButton
-          onPress={() => markTransferPaid(transfer.id)}
-          variant="secondary"
-          fullWidth={false}
-          disabled={activeTransferId === transfer.id}
-        >
-          {activeTransferId === transfer.id ? "Saving..." : "Mark paid"}
-        </AppButton>
+        <View style={{ gap: theme.spacing.sm }}>
+          {payLink ? (
+            <AppButton
+              onPress={() => Linking.openURL(payLink.url)}
+              variant="primary"
+              fullWidth={false}
+            >
+              {payLink.label}
+            </AppButton>
+          ) : null}
+          <AppButton
+            onPress={() => markTransferPaid(transfer.id)}
+            variant="secondary"
+            fullWidth={false}
+            disabled={activeTransferId === transfer.id}
+          >
+            {activeTransferId === transfer.id ? "Saving..." : "Mark paid"}
+          </AppButton>
+        </View>
       );
     }
 

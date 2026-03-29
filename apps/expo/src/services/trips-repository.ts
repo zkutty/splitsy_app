@@ -1,4 +1,4 @@
-import type { Expense, ExpenseDraft, SettlementTransfer, Trip, TripSettlementTransfer, UserProfile } from "@splitsy/domain";
+import type { Expense, ExpenseDraft, PaymentMethodType, SettlementTransfer, Trip, TripSettlementTransfer, UserProfile } from "@splitsy/domain";
 import { SAMPLE_EXPENSES, SAMPLE_TRIP, SAMPLE_USER } from "@splitsy/domain";
 
 import { createSupabaseClient, hasSupabaseConfig } from "./supabase";
@@ -35,6 +35,9 @@ export type TripsRepository = {
   }) => Promise<Trip>;
   addTripMember: (tripId: string, member: UserProfile) => Promise<Trip>;
   removeTripMember: (tripId: string, memberId: string) => Promise<Trip>;
+  updatePaymentMethod: (type: PaymentMethodType | null, handle: string | null) => Promise<void>;
+  getPaymentMethod: () => Promise<{ type: PaymentMethodType | null; handle: string | null }>;
+  getPaymentMethodForUser: (userId: string) => Promise<{ type: PaymentMethodType | null; handle: string | null }>;
 };
 
 const demoRepository = (): TripsRepository => {
@@ -42,6 +45,7 @@ const demoRepository = (): TripsRepository => {
   let expenses = [...SAMPLE_EXPENSES];
   let settlementTransfers: TripSettlementTransfer[] = [];
   const invites = new Map<string, string>();
+  let demoPaymentMethod: { type: PaymentMethodType | null; handle: string | null } = { type: null, handle: null };
 
   return {
     ensureProfile: async () => undefined,
@@ -320,7 +324,12 @@ const demoRepository = (): TripsRepository => {
       }
 
       return updatedTrip;
-    }
+    },
+    updatePaymentMethod: async (type, handle) => {
+      demoPaymentMethod = { type, handle };
+    },
+    getPaymentMethod: async () => demoPaymentMethod,
+    getPaymentMethodForUser: async () => demoPaymentMethod
   };
 };
 
@@ -825,6 +834,53 @@ const supabaseRepository = (): TripsRepository => {
       }
 
       return fetchTrip(tripId);
+    },
+    updatePaymentMethod: async (type, handle) => {
+      const userId = await getCurrentUserId();
+      const { error } = await supabase
+        .from("users")
+        .update({
+          payment_method_type: type,
+          payment_method_handle: handle
+        })
+        .eq("id", userId);
+
+      if (error) {
+        throw error;
+      }
+    },
+    getPaymentMethod: async () => {
+      const userId = await getCurrentUserId();
+      const { data, error } = await supabase
+        .from("users")
+        .select("payment_method_type, payment_method_handle")
+        .eq("id", userId)
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      return {
+        type: (data?.payment_method_type as PaymentMethodType | null) ?? null,
+        handle: (data?.payment_method_handle as string | null) ?? null
+      };
+    },
+    getPaymentMethodForUser: async (userId) => {
+      const { data, error } = await supabase
+        .from("users")
+        .select("payment_method_type, payment_method_handle")
+        .eq("id", userId)
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      return {
+        type: (data?.payment_method_type as PaymentMethodType | null) ?? null,
+        handle: (data?.payment_method_handle as string | null) ?? null
+      };
     }
   };
 };
