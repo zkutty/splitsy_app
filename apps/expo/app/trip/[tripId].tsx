@@ -11,6 +11,7 @@ import { formatCurrency } from "../../src/lib/format";
 import { buildPaymentLink, getPaymentMethodLabel } from "../../src/lib/payment-links";
 import { fetchConversionRate } from "../../src/lib/rates";
 import { matchesSearch, calculateSummary } from "../../src/lib/expense-utils";
+import { exportTripCsv } from "../../src/lib/export";
 import { useSession } from "../../src/providers/session-provider";
 import { useTrips } from "../../src/providers/trips-provider";
 import { AppScreen } from "../../src/ui/layout/AppScreen";
@@ -90,6 +91,7 @@ export default function TripDetailsScreen() {
   const [isSavingExpense, setIsSavingExpense] = useState(false);
   const [isAddingMember, setIsAddingMember] = useState(false);
   const [isCompletingTrip, setIsCompletingTrip] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [isCreatingInvite, setIsCreatingInvite] = useState(false);
   const [inviteLink, setInviteLink] = useState("");
   const [inviteFeedback, setInviteFeedback] = useState<string | null>(null);
@@ -837,11 +839,30 @@ export default function TripDetailsScreen() {
                 Using approximate rate — live rate unavailable.
               </AppText>
             ) : null}
-            {mayCompleteTrip ? (
-              <AppButton onPress={runCompleteTrip} disabled={isCompletingTrip} fullWidth={false}>
-                {isCompletingTrip ? "Completing..." : "Complete trip"}
-              </AppButton>
-            ) : null}
+            <View style={styles.summaryActions}>
+              {mayCompleteTrip ? (
+                <AppButton onPress={runCompleteTrip} disabled={isCompletingTrip} fullWidth={false}>
+                  {isCompletingTrip ? "Completing..." : "Complete trip"}
+                </AppButton>
+              ) : null}
+              {expenses.length > 0 ? (
+                <AppButton
+                  onPress={async () => {
+                    setIsExporting(true);
+                    try {
+                      await exportTripCsv(trip, expenses, settlement, persistedTransfers);
+                    } finally {
+                      setIsExporting(false);
+                    }
+                  }}
+                  variant="secondary"
+                  fullWidth={false}
+                  disabled={isExporting}
+                >
+                  {isExporting ? "Exporting..." : "Export CSV"}
+                </AppButton>
+              ) : null}
+            </View>
           </SurfaceCard>
 
           {isTripActive ? (
@@ -1559,6 +1580,11 @@ function createStyles(theme: Theme, compact: boolean) {
     flex: 1
   },
   summaryCard: {
+    gap: theme.spacing.sm
+  },
+  summaryActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: theme.spacing.sm
   },
   group: {
