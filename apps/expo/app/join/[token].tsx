@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useSession } from "../../src/providers/session-provider";
 import { useTrips } from "../../src/providers/trips-provider";
@@ -14,13 +14,11 @@ export default function JoinTripScreen() {
   const session = useSession();
   const { acceptTripInvite, isLoading } = useTrips();
   const [error, setError] = useState<string | null>(null);
-  const [hasAttemptedJoin, setHasAttemptedJoin] = useState(false);
   const [joinedTripId, setJoinedTripId] = useState<string | null>(null);
+  const hasAttemptedJoin = useRef(false);
 
   useEffect(() => {
-    if (!token || session.isLoading || hasAttemptedJoin) {
-      return;
-    }
+    if (!token || session.isLoading || hasAttemptedJoin.current) return;
 
     if (!session.isAuthenticated) {
       session.setPendingPostAuthPath(`/join/${token}`);
@@ -28,33 +26,22 @@ export default function JoinTripScreen() {
       return;
     }
 
-    if (isLoading) {
-      return;
-    }
+    if (isLoading) return;
 
-    setHasAttemptedJoin(true);
+    hasAttemptedJoin.current = true;
     session.setPendingPostAuthPath(null);
-    let cancelled = false;
 
     acceptTripInvite(token)
       .then((tripId) => {
-        if (!cancelled) {
-          setJoinedTripId(tripId);
-          router.replace({ pathname: "/trip/[tripId]", params: { tripId } });
-        }
+        setJoinedTripId(tripId);
+        router.replace({ pathname: "/trip/[tripId]", params: { tripId } });
       })
       .catch((inviteError) => {
-        if (!cancelled) {
-          setError(inviteError instanceof Error ? inviteError.message : "Unable to join this trip.");
-        }
+        setError(inviteError instanceof Error ? inviteError.message : "Unable to join this trip.");
       });
-
-    return () => {
-      cancelled = true;
-    };
   }, [
     acceptTripInvite,
-    hasAttemptedJoin,
+    isLoading,
     router,
     session.isAuthenticated,
     session.isLoading,
