@@ -18,6 +18,7 @@ import { AppInput } from "../../src/ui/primitives/AppInput";
 import { AppText } from "../../src/ui/primitives/AppText";
 import { Chip } from "../../src/ui/primitives/Chip";
 import { CurrencyPicker } from "../../src/ui/primitives/CurrencyPicker";
+import { DatePicker } from "../../src/ui/primitives/DatePicker";
 import { SectionCard } from "../../src/ui/primitives/SectionCard";
 import { SurfaceCard } from "../../src/ui/primitives/SurfaceCard";
 import { GroupCard } from "../../src/ui/primitives/GroupCard";
@@ -166,9 +167,21 @@ export default function TripDetailsScreen() {
 
     const recipientUserIds = new Set<string>();
     for (const transfer of persistedTransfers) {
-      const member = trip.members.find((m) => m.id === transfer.toMemberId);
-      if (member?.userId && !paymentMethods[member.userId]) {
-        recipientUserIds.add(member.userId);
+      if (transfer.toEntity.type === 'member') {
+        const toEntity = transfer.toEntity;
+        const member = trip.members.find((m) => m.id === toEntity.memberId);
+        if (member?.userId && !paymentMethods[member.userId]) {
+          recipientUserIds.add(member.userId);
+        }
+      } else if (transfer.toEntity.type === 'group') {
+        const toEntity = transfer.toEntity;
+        // For groups, load payment methods for all group members
+        const groupMembers = trip.members.filter((m) => m.groupId === toEntity.groupId);
+        for (const member of groupMembers) {
+          if (member.userId && !paymentMethods[member.userId]) {
+            recipientUserIds.add(member.userId);
+          }
+        }
       }
     }
 
@@ -580,7 +593,8 @@ export default function TripDetailsScreen() {
 
     // For group transfers, find any member of the group with a payment method
     if (transfer.toEntity.type === 'group') {
-      const groupMembers = trip.members.filter((m) => m.groupId === transfer.toEntity.groupId);
+      const toEntity = transfer.toEntity;
+      const groupMembers = trip.members.filter((m) => m.groupId === toEntity.groupId);
       for (const member of groupMembers) {
         if (!member.userId) continue;
         const pm = paymentMethods[member.userId];
@@ -593,7 +607,9 @@ export default function TripDetailsScreen() {
     }
 
     // For member transfers
-    const recipient = trip.members.find((m) => m.id === transfer.toEntity.memberId);
+    const toEntity = transfer.toEntity;
+    if (toEntity.type !== 'member') return null;
+    const recipient = trip.members.find((m) => m.id === toEntity.memberId);
     if (!recipient?.userId) return null;
     const pm = paymentMethods[recipient.userId];
     if (!pm?.type || !pm?.handle) return null;
@@ -609,7 +625,7 @@ export default function TripDetailsScreen() {
         <View style={{ gap: theme.spacing.sm }}>
           {payLink ? (
             <AppButton
-              onPress={() => Linking.openURL(payLink.url)}
+              onPress={async () => { await Linking.openURL(payLink.url); }}
               variant="primary"
               fullWidth={false}
             >
@@ -796,13 +812,12 @@ export default function TripDetailsScreen() {
               keyboardType="decimal-pad"
               editable={isTripActive}
             />
-            <AppInput
+            <DatePicker
               label="Expense date"
               value={expenseDate}
-              onChangeText={setExpenseDate}
-              placeholder="2026-06-10"
-              helperText="Use YYYY-MM-DD."
-              editable={isTripActive}
+              onChange={setExpenseDate}
+              disabled={!isTripActive}
+              maximumDate={new Date()}
             />
             <CurrencyPicker
               label="Original currency"

@@ -260,6 +260,7 @@ const demoRepository = (): TripsRepository => {
         tripCurrencyCode: input.tripCurrencyCode,
         startDate: input.startDate ?? null,
         endDate: input.endDate ?? null,
+        groups: [],
         members: [
           {
             id: input.owner.id,
@@ -516,8 +517,8 @@ const supabaseRepository = (): TripsRepository => {
     // Populate memberIds for each group
     for (const group of tripGroups) {
       group.memberIds = members
-        .filter((m) => m.groupId === group.id)
-        .map((m) => m.id);
+        .filter((m: typeof members[number]) => m.groupId === group.id)
+        .map((m: typeof members[number]) => m.id);
     }
 
     return {
@@ -686,7 +687,7 @@ const supabaseRepository = (): TripsRepository => {
       // Need to fetch display names for entities
       const trip = await fetchTrip(tripId);
 
-      return (data ?? []).map((row) => {
+      return (data ?? []).map((row: any) => {
         let fromDisplayName = 'Unknown';
         let toDisplayName = 'Unknown';
 
@@ -861,7 +862,7 @@ const supabaseRepository = (): TripsRepository => {
         throw transfersError;
       }
 
-      const persistedTransfers = (transfersData ?? []).map((row) => {
+      const persistedTransfers = (transfersData ?? []).map((row: any) => {
         let fromDisplayName = 'Unknown';
         let toDisplayName = 'Unknown';
 
@@ -1136,7 +1137,7 @@ const supabaseRepository = (): TripsRepository => {
       return {
         id: data.id,
         name: data.name,
-        memberIds: (members ?? []).map((m) => m.id)
+        memberIds: (members ?? []).map((m: any) => m.id)
       };
     },
     deleteGroup: async (groupId) => {

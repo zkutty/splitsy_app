@@ -1,5 +1,5 @@
 import { PropsWithChildren, ReactElement, useMemo } from "react";
-import { Platform, RefreshControl, ScrollView, StyleProp, StyleSheet, View, ViewStyle, useWindowDimensions } from "react-native";
+import { Platform, RefreshControl, RefreshControlProps, ScrollView, StyleProp, StyleSheet, View, ViewStyle, useWindowDimensions } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppHeaderMenu } from "../navigation/AppHeaderMenu";
@@ -10,7 +10,7 @@ type AppScreenProps = PropsWithChildren<{
   maxWidth?: number;
   contentStyle?: StyleProp<ViewStyle>;
   showHeaderMenu?: boolean;
-  refreshControl?: ReactElement<typeof RefreshControl>;
+  refreshControl?: ReactElement<RefreshControlProps>;
 }>;
 
 export function AppScreen({ children, maxWidth, contentStyle, showHeaderMenu = false, refreshControl }: AppScreenProps) {

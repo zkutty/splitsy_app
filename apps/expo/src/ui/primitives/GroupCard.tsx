@@ -135,7 +135,9 @@ function createStyles(theme: Theme) {
       gap: theme.spacing.md,
       padding: theme.spacing.md,
       borderRadius: theme.radius.md,
-      backgroundColor: theme.colors.background.danger
+      backgroundColor: theme.colors.surface.base,
+      borderWidth: 1,
+      borderColor: theme.colors.accent.danger
     },
     confirmActions: {
       flexDirection: "row",

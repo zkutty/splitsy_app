@@ -130,7 +130,7 @@ function createStyles(theme: Theme) {
       gap: theme.spacing.md,
       padding: theme.spacing.sm,
       borderRadius: theme.radius.sm,
-      backgroundColor: theme.colors.background.base
+      backgroundColor: theme.colors.background.muted
     },
     memberRowCompact: {
       flexDirection: "column",
@@ -144,7 +144,7 @@ function createStyles(theme: Theme) {
       fontStyle: "italic"
     },
     memberDetail: {
-      fontSize: theme.type.size.xs
+      fontSize: theme.type.size.caption
     }
   });
 }

@@ -312,14 +312,16 @@ export function TripsProvider({ children }: PropsWithChildren) {
 
         // For member transfers
         if (transfer.fromEntity.type === 'member') {
-          const member = trip.members.find((item) => item.id === transfer.fromEntity.memberId);
+          const fromEntity = transfer.fromEntity;
+          const member = trip.members.find((item) => item.id === fromEntity.memberId);
           return member?.userId === currentUser.id;
         }
 
         // For group transfers - any member of the group can mark paid
         if (transfer.fromEntity.type === 'group') {
+          const fromEntity = transfer.fromEntity;
           return trip.members.some(
-            (member) => member.groupId === transfer.fromEntity.groupId && member.userId === currentUser.id
+            (member) => member.groupId === fromEntity.groupId && member.userId === currentUser.id
           );
         }
 
@@ -342,14 +344,16 @@ export function TripsProvider({ children }: PropsWithChildren) {
 
         // For member transfers
         if (transfer.toEntity.type === 'member') {
-          const member = trip.members.find((item) => item.id === transfer.toEntity.memberId);
+          const toEntity = transfer.toEntity;
+          const member = trip.members.find((item) => item.id === toEntity.memberId);
           return member?.userId === currentUser.id;
         }
 
         // For group transfers - any member of the group can confirm
         if (transfer.toEntity.type === 'group') {
+          const toEntity = transfer.toEntity;
           return trip.members.some(
-            (member) => member.groupId === transfer.toEntity.groupId && member.userId === currentUser.id
+            (member) => member.groupId === toEntity.groupId && member.userId === currentUser.id
           );
         }
 
