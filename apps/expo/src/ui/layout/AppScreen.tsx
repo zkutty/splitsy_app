@@ -18,8 +18,9 @@ export function AppScreen({ children, maxWidth, contentStyle, showHeaderMenu = f
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const compact = width < 768;
   const showMobileHeader = showHeaderMenu && width < 960;
-  const contentMaxWidth = width < 768 ? theme.layout.contentWidth : (maxWidth ?? theme.layout.maxWidth);
+  const contentMaxWidth = compact ? theme.layout.contentWidth : (maxWidth ?? theme.layout.maxWidth);
 
   return (
     <SafeAreaView edges={["top", "bottom"]} style={styles.safeArea}>
@@ -35,7 +36,7 @@ export function AppScreen({ children, maxWidth, contentStyle, showHeaderMenu = f
         keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
         refreshControl={refreshControl}
       >
-        <View style={[styles.shell, { maxWidth: contentMaxWidth }, contentStyle]}>
+        <View style={[styles.shell, { maxWidth: contentMaxWidth, gap: compact ? theme.spacing.sm : theme.spacing.lg }, contentStyle]}>
           {showMobileHeader ? (
             <View style={styles.mobileHeader}>
               <BrandMark compact />

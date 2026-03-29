@@ -58,7 +58,10 @@ export default function TripDetailsScreen() {
     getGroupsForTrip
   } = useTrips();
   const { theme } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const { width } = useWindowDimensions();
+  const wide = width >= 1040;
+  const compact = width < 768;
+  const styles = useMemo(() => createStyles(theme, compact), [theme, compact]);
   const trip = getTripById(tripId);
   const currentMember = getCurrentMemberForTrip(tripId);
   const mayManageTrip = canEditTrip(tripId);
@@ -66,9 +69,6 @@ export default function TripDetailsScreen() {
   const expenses = getExpensesForTrip(tripId);
   const persistedTransfers = getSettlementTransfersForTrip(tripId);
   const groups = getGroupsForTrip(tripId);
-  const { width } = useWindowDimensions();
-  const wide = width >= 1040;
-  const compact = width < 768;
 
   const [amount, setAmount] = useState("");
   const [expenseDate, setExpenseDate] = useState(new Date().toISOString().slice(0, 10));
@@ -1350,10 +1350,10 @@ export default function TripDetailsScreen() {
   );
 }
 
-function createStyles(theme: Theme) {
+function createStyles(theme: Theme, compact: boolean) {
   return StyleSheet.create({
   layout: {
-    gap: theme.spacing.lg
+    gap: compact ? theme.spacing.sm : theme.spacing.lg
   },
   layoutWide: {
     flexDirection: "row",
@@ -1361,11 +1361,11 @@ function createStyles(theme: Theme) {
   },
   primaryColumn: {
     flex: 1.5,
-    gap: theme.spacing.lg
+    gap: compact ? theme.spacing.sm : theme.spacing.lg
   },
   secondaryColumn: {
     flex: 1,
-    gap: theme.spacing.lg
+    gap: compact ? theme.spacing.sm : theme.spacing.lg
   },
   summaryCard: {
     gap: theme.spacing.sm

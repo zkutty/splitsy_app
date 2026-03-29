@@ -1,5 +1,5 @@
 import { PropsWithChildren, useMemo, useState } from "react";
-import { LayoutAnimation, Platform, Pressable, StyleSheet, UIManager, View } from "react-native";
+import { LayoutAnimation, Platform, Pressable, StyleSheet, UIManager, View, useWindowDimensions } from "react-native";
 
 import { AppText } from "./AppText";
 import { SurfaceCard } from "./SurfaceCard";
@@ -32,7 +32,9 @@ export function SectionCard({
   children
 }: SectionCardProps) {
   const { theme } = useAppTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const { width } = useWindowDimensions();
+  const compact = width < 768;
+  const styles = useMemo(() => createStyles(theme, compact), [theme, compact]);
   const [open, setOpen] = useState(collapsible ? initiallyOpen : true);
 
   const toggle = () => {
@@ -73,7 +75,7 @@ export function SectionCard({
   );
 }
 
-function createStyles(theme: Theme) {
+function createStyles(theme: Theme, compact: boolean) {
   return StyleSheet.create({
     header: {
       gap: theme.spacing.xs
@@ -88,8 +90,8 @@ function createStyles(theme: Theme) {
       flex: 1
     },
     content: {
-      gap: theme.spacing.md,
-      marginTop: theme.spacing.md
+      gap: compact ? theme.spacing.sm : theme.spacing.md,
+      marginTop: compact ? theme.spacing.sm : theme.spacing.md
     }
   });
 }
