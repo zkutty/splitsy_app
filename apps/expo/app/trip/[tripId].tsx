@@ -340,7 +340,7 @@ export default function TripDetailsScreen() {
     return <Redirect href="/sign-in" />;
   }
 
-  if (isLoading) {
+  if (session.isLoading || isLoading) {
     return (
       <AppScreen>
         <SurfaceCard>
