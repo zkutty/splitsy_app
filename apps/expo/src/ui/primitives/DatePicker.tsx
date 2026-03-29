@@ -3,7 +3,6 @@ import { Platform, Pressable, StyleSheet, View } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
 import { AppText } from "./AppText";
-import { AppInput } from "./AppInput";
 import { Theme, useAppTheme } from "../theme";
 
 type DatePickerProps = {
@@ -65,19 +64,48 @@ export function DatePicker({
     }
   };
 
-  // Web: use HTML5 date input
+  const webInputStyle = {
+    minHeight: 48,
+    paddingLeft: theme.spacing.md,
+    paddingRight: theme.spacing.md,
+    paddingTop: theme.spacing.sm,
+    paddingBottom: theme.spacing.sm,
+    borderRadius: theme.radius.md,
+    borderWidth: 1,
+    borderStyle: "solid" as const,
+    borderColor: theme.colors.border.subtle,
+    backgroundColor: disabled ? theme.colors.surface.muted : theme.colors.surface.base,
+    color: disabled ? theme.colors.text.muted : theme.colors.text.primary,
+    fontSize: theme.type.size.body,
+    opacity: disabled ? 0.6 : 1,
+    width: "100%",
+    boxSizing: "border-box" as const,
+    fontFamily: "inherit"
+  };
+
+  // Web: use native HTML5 date input
   if (Platform.OS === "web") {
     return (
-      <AppInput
-        label={label}
-        value={value}
-        onChangeText={onChange}
-        placeholder="YYYY-MM-DD"
-        helperText={helperText}
-        editable={!disabled}
-        // @ts-ignore - type is valid for web
-        type="date"
-      />
+      <View style={styles.container}>
+        <AppText variant="meta" color="secondary" style={styles.label}>
+          {label}
+        </AppText>
+        {/* @ts-ignore - input is a valid web element */}
+        <input
+          type="date"
+          value={value}
+          onChange={(e: any) => onChange(e.target.value)}
+          disabled={disabled}
+          max={maximumDate ? formatDate(maximumDate) : undefined}
+          min={minimumDate ? formatDate(minimumDate) : undefined}
+          style={webInputStyle}
+        />
+        {helperText && (
+          <AppText variant="bodySm" color="muted" style={styles.helperText}>
+            {helperText}
+          </AppText>
+        )}
+      </View>
     );
   }
 
