@@ -121,10 +121,12 @@ function createStyles(theme: Theme) {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "flex-start",
-      gap: theme.spacing.md
+      gap: theme.spacing.sm,
+      flexWrap: "wrap"
     },
     headerLeft: {
       flex: 1,
+      minWidth: 160,
       gap: theme.spacing.xs
     },
     groupName: {
