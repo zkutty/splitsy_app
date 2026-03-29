@@ -154,3 +154,27 @@ export type TripSettlement = {
   totalTripSpend: number;
   currencyCode: CurrencyCode;
 };
+
+export type ActivityEventType =
+  | 'expense_added'
+  | 'expense_edited'
+  | 'expense_deleted'
+  | 'member_added'
+  | 'member_removed'
+  | 'member_claimed'
+  | 'settlement_paid'
+  | 'settlement_confirmed'
+  | 'trip_completed'
+  | 'trip_settled';
+
+export type TripActivityEvent = {
+  id: string;
+  tripId: string;
+  eventType: ActivityEventType;
+  actorUserId?: string | null;
+  actorMemberId?: string | null;
+  entityType?: string | null;
+  entityId?: string | null;
+  payload?: Record<string, any> | null;
+  createdAt: string;
+};

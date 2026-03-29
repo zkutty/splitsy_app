@@ -1,4 +1,4 @@
-import type { Expense, ExpenseDraft, MemberGroup, PaymentMethodType, SettlementTransfer, SplitMode, Trip, TripSettlementTransfer, UserProfile } from "@splitsy/domain";
+import type { Expense, ExpenseDraft, MemberGroup, PaymentMethodType, SettlementTransfer, SplitMode, Trip, TripActivityEvent, TripSettlementTransfer, UserProfile } from "@splitsy/domain";
 import { SAMPLE_EXPENSES, SAMPLE_TRIP, SAMPLE_USER } from "@splitsy/domain";
 
 import { createSupabaseClient, hasSupabaseConfig } from "./supabase";
@@ -43,6 +43,7 @@ export type TripsRepository = {
   deleteGroup: (groupId: string) => Promise<void>;
   addMemberToGroup: (memberId: string, groupId: string) => Promise<void>;
   removeMemberFromGroup: (memberId: string) => Promise<void>;
+  listActivityLog: (tripId: string) => Promise<TripActivityEvent[]>;
 };
 
 const demoRepository = (): TripsRepository => {
@@ -466,7 +467,8 @@ const demoRepository = (): TripsRepository => {
             .map((m) => m.id)
         }))
       }));
-    }
+    },
+    listActivityLog: async (_tripId) => []
   };
 };
 
@@ -1195,6 +1197,30 @@ const supabaseRepository = (): TripsRepository => {
       if (error) {
         throw error;
       }
+    },
+    listActivityLog: async (tripId) => {
+      const { data, error } = await supabase
+        .from("trip_activity_log")
+        .select("id, trip_id, event_type, actor_user_id, actor_member_id, entity_type, entity_id, payload, created_at")
+        .eq("trip_id", tripId)
+        .order("created_at", { ascending: false })
+        .limit(100);
+
+      if (error) {
+        throw error;
+      }
+
+      return (data ?? []).map((row: any): TripActivityEvent => ({
+        id: row.id,
+        tripId: row.trip_id,
+        eventType: row.event_type,
+        actorUserId: row.actor_user_id ?? null,
+        actorMemberId: row.actor_member_id ?? null,
+        entityType: row.entity_type ?? null,
+        entityId: row.entity_id ?? null,
+        payload: row.payload ?? null,
+        createdAt: row.created_at
+      }));
     }
   };
 };

@@ -27,6 +27,7 @@ import { GroupCard } from "../../src/ui/primitives/GroupCard";
 import { GroupEditor } from "../../src/ui/primitives/GroupEditor";
 import { GroupMemberPicker } from "../../src/ui/primitives/GroupMemberPicker";
 import { ExpandableBalance } from "../../src/ui/primitives/ExpandableBalance";
+import { ActivityFeed } from "../../src/ui/primitives/ActivityFeed";
 import { ExpenseFilters } from "../../src/ui/primitives/ExpenseFilters";
 import { ExpenseSummaryView } from "../../src/ui/primitives/ExpenseSummaryView";
 import { Theme, useAppTheme } from "../../src/ui/theme";
@@ -60,7 +61,8 @@ export default function TripDetailsScreen() {
     deleteGroup,
     addMemberToGroup,
     removeMemberFromGroup,
-    getGroupsForTrip
+    getGroupsForTrip,
+    getActivityLogForTrip
   } = useTrips();
   const { theme } = useAppTheme();
   const { width } = useWindowDimensions();
@@ -74,6 +76,7 @@ export default function TripDetailsScreen() {
   const expenses = getExpensesForTrip(tripId);
   const persistedTransfers = getSettlementTransfersForTrip(tripId);
   const groups = getGroupsForTrip(tripId);
+  const activityLog = getActivityLogForTrip(tripId);
 
   const [amount, setAmount] = useState("");
   const [expenseDate, setExpenseDate] = useState(new Date().toISOString().slice(0, 10));
@@ -1329,6 +1332,15 @@ export default function TripDetailsScreen() {
                 </AppButton>
               </View>
             ) : null}
+          </SectionCard>
+
+          <SectionCard
+            title="Activity"
+            collapsible
+            initiallyOpen={false}
+            badge={activityLog.length ? `${activityLog.length} event${activityLog.length === 1 ? "" : "s"}` : undefined}
+          >
+            <ActivityFeed events={activityLog} />
           </SectionCard>
         </View>
       </View>

@@ -1,4 +1,4 @@
-import type { Expense, MemberGroup, PaymentMethodType, Trip, TripSettlementTransfer, UserProfile } from "@splitsy/domain";
+import type { Expense, MemberGroup, PaymentMethodType, Trip, TripActivityEvent, TripSettlementTransfer, UserProfile } from "@splitsy/domain";
 import { settleTrip } from "@splitsy/domain";
 import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useState } from "react";
 import { AppState, Platform } from "react-native";
@@ -48,6 +48,7 @@ type TripsContextValue = {
   removeMemberFromGroup: (tripId: string, memberId: string) => Promise<void>;
   getGroupsForTrip: (tripId: string) => MemberGroup[];
   getMemberGroup: (tripId: string, memberId: string) => MemberGroup | undefined;
+  getActivityLogForTrip: (tripId: string) => TripActivityEvent[];
 };
 
 const TRIPS_CONTEXT_KEY = "__splittrip_trips_context__";
@@ -64,6 +65,7 @@ export function TripsProvider({ children }: PropsWithChildren) {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [settlementTransfers, setSettlementTransfers] = useState<TripSettlementTransfer[]>([]);
+  const [activityLogs, setActivityLogs] = useState<TripActivityEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const session = useSession();
   const repository = useMemo(() => createTripsRepository(), []);
@@ -97,21 +99,24 @@ export function TripsProvider({ children }: PropsWithChildren) {
       setTrips([]);
       setExpenses([]);
       setSettlementTransfers([]);
+      setActivityLogs([]);
       return;
     }
 
     await repository.ensureProfile(profile);
     await repository.claimMembershipsForCurrentUser();
     const loadedTrips = await repository.listTrips();
-    const loadedExpenses = loadedTrips.length
-      ? (await Promise.all(loadedTrips.map((trip) => repository.listExpenses(trip.id)))).flat()
-      : [];
-    const loadedSettlementTransfers = loadedTrips.length
-      ? (await Promise.all(loadedTrips.map((trip) => repository.listSettlementTransfers(trip.id)))).flat()
-      : [];
+    const [loadedExpenses, loadedSettlementTransfers, loadedActivityLogs] = loadedTrips.length
+      ? await Promise.all([
+          Promise.all(loadedTrips.map((trip) => repository.listExpenses(trip.id))).then((r) => r.flat()),
+          Promise.all(loadedTrips.map((trip) => repository.listSettlementTransfers(trip.id))).then((r) => r.flat()),
+          Promise.all(loadedTrips.map((trip) => repository.listActivityLog(trip.id))).then((r) => r.flat())
+        ])
+      : [[], [], []];
     setTrips(loadedTrips);
     setExpenses(loadedExpenses);
     setSettlementTransfers(loadedSettlementTransfers);
+    setActivityLogs(loadedActivityLogs);
   };
 
   useEffect(() => {
@@ -119,6 +124,7 @@ export function TripsProvider({ children }: PropsWithChildren) {
       setTrips([]);
       setExpenses([]);
       setSettlementTransfers([]);
+      setActivityLogs([]);
       setIsLoading(false);
       return;
     }
@@ -507,9 +513,11 @@ export function TripsProvider({ children }: PropsWithChildren) {
         }
 
         return trip?.groups?.find((g) => g.id === member.groupId);
-      }
+      },
+      getActivityLogForTrip: (tripId) =>
+        activityLogs.filter((event) => event.tripId === tripId)
     }),
-    [currentUser, expenses, isLoading, repository, session.authMode, session.signOut, session.user, settlementTransfers, trips]
+    [activityLogs, currentUser, expenses, isLoading, repository, session.authMode, session.signOut, session.user, settlementTransfers, trips]
   );
 
   return <TripsContext.Provider value={value}>{children}</TripsContext.Provider>;
