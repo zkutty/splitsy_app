@@ -1,5 +1,5 @@
 import { Redirect, useLocalSearchParams } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import * as Linking from "expo-linking";
 import { Platform, Share, StyleSheet, View, useWindowDimensions } from "react-native";
 
@@ -79,11 +79,62 @@ export default function TripDetailsScreen() {
   const [memberPendingRemovalId, setMemberPendingRemovalId] = useState<string | null>(null);
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
 
+  // Display currency — lets the user view all totals/settlements in a different currency
+  const [displayCurrency, setDisplayCurrency] = useState(trip?.tripCurrencyCode ?? "USD");
+  const [displayRate, setDisplayRate] = useState(1);
+  const [displayRateSource, setDisplayRateSource] = useState<"live" | "fallback" | "same">("same");
+
+  const isDisplayConverted = displayCurrency !== trip?.tripCurrencyCode;
+
+  // Format an amount that's stored in trip currency, converting to display currency
+  const fmt = useCallback(
+    (amount: number, overrideCurrency?: string) =>
+      formatCurrency(
+        isDisplayConverted ? Math.round(amount * displayRate * 100) / 100 : amount,
+        overrideCurrency ?? displayCurrency
+      ),
+    [displayCurrency, displayRate, isDisplayConverted]
+  );
+
   useEffect(() => {
     if (trip) {
       setCurrencyCode(trip.tripCurrencyCode);
     }
   }, [trip?.id, trip?.tripCurrencyCode]);
+
+  // Keep display currency in sync when trip loads
+  useEffect(() => {
+    if (trip && !isDisplayConverted) {
+      setDisplayCurrency(trip.tripCurrencyCode);
+    }
+  }, [trip?.tripCurrencyCode]);
+
+  // Fetch display conversion rate whenever displayCurrency changes
+  useEffect(() => {
+    if (!trip) return;
+
+    if (displayCurrency === trip.tripCurrencyCode) {
+      setDisplayRate(1);
+      setDisplayRateSource("same");
+      return;
+    }
+
+    let cancelled = false;
+    const today = new Date().toISOString().slice(0, 10);
+
+    fetchConversionRate(trip.tripCurrencyCode, displayCurrency, today).then(
+      ({ rate, source }) => {
+        if (!cancelled) {
+          setDisplayRate(rate);
+          setDisplayRateSource(source);
+        }
+      }
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [displayCurrency, trip?.tripCurrencyCode]);
 
   useEffect(() => {
     if (!editingExpenseId) {
@@ -491,8 +542,18 @@ export default function TripDetailsScreen() {
               {currentMember ? `Signed in as ${currentMember.displayName}` : "You are viewing this trip as a guest member"}
             </AppText>
             <AppText variant="sectionTitle" color="inverse">
-              {settlement ? formatCurrency(settlement.totalTripSpend, settlement.currencyCode) : ""}
+              {settlement ? fmt(settlement.totalTripSpend) : ""}
             </AppText>
+            <CurrencyPicker
+              label="View amounts in"
+              value={displayCurrency}
+              onChange={setDisplayCurrency}
+            />
+            {isDisplayConverted && displayRateSource === "fallback" ? (
+              <AppText variant="bodySm" color="accent">
+                Using approximate rate — live rate unavailable.
+              </AppText>
+            ) : null}
             {mayCompleteTrip ? (
               <AppButton onPress={runCompleteTrip} disabled={isCompletingTrip} fullWidth={false}>
                 {isCompletingTrip ? "Completing..." : "Complete trip"}
@@ -645,7 +706,7 @@ export default function TripDetailsScreen() {
                     </AppText>
                     <AppText variant="bodySm" color="muted">
                       {formatCurrency(expense.amount, expense.currencyCode)} {"->"}{" "}
-                      {formatCurrency(expense.tripAmount, trip.tripCurrencyCode)}
+                      {fmt(expense.tripAmount)}
                     </AppText>
                     <AppText variant="bodySm" color="muted">
                       On {expense.expenseDate}
@@ -696,8 +757,8 @@ export default function TripDetailsScreen() {
                       {member?.displayName ?? balance.memberId}
                     </AppText>
                     <AppText variant="bodySm" color="muted">
-                      Paid {formatCurrency(balance.paid, trip.tripCurrencyCode)} · Owes{" "}
-                      {formatCurrency(balance.owed, trip.tripCurrencyCode)}
+                      Paid {fmt(balance.paid)} · Owes{" "}
+                      {fmt(balance.owed)}
                     </AppText>
                   </View>
                   <AppText
@@ -705,7 +766,7 @@ export default function TripDetailsScreen() {
                     color={balance.net < 0 ? "danger" : balance.net > 0 ? "success" : "muted"}
                     style={styles.netAmount}
                   >
-                    {formatCurrency(balance.net, trip.tripCurrencyCode)}
+                    {fmt(balance.net)}
                   </AppText>
                 </View>
               );
@@ -727,7 +788,7 @@ export default function TripDetailsScreen() {
                         </AppText>
                       </View>
                       <AppText variant="bodySm" color="primary" style={styles.netAmount}>
-                        {formatCurrency(transfer.amount, transfer.currencyCode)}
+                        {fmt(transfer.amount)}
                       </AppText>
                     </View>
                   );
@@ -757,7 +818,7 @@ export default function TripDetailsScreen() {
                       </View>
                       <View style={[styles.expenseMeta, compact ? styles.expenseMetaCompact : null]}>
                         <AppText variant="bodySm" color="primary" style={styles.netAmount}>
-                          {formatCurrency(transfer.amount, transfer.currencyCode)}
+                          {fmt(transfer.amount)}
                         </AppText>
                         {renderPersistedTransferActions(transfer)}
                       </View>
