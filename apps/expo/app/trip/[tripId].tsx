@@ -1,7 +1,7 @@
 import { Redirect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as Linking from "expo-linking";
-import { Platform, Share, StyleSheet, View, useWindowDimensions } from "react-native";
+import { Platform, Pressable, Share, StyleSheet, View, useWindowDimensions } from "react-native";
 
 import { PRESET_CATEGORIES, settleTrip, validateExpenseDraft } from "@splitsy/domain";
 import type { Expense, MemberGroup, PaymentMethodType, TripSettlementTransfer } from "@splitsy/domain";
@@ -92,6 +92,7 @@ export default function TripDetailsScreen() {
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
   const [showGroupEditor, setShowGroupEditor] = useState(false);
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [showRemovedMembers, setShowRemovedMembers] = useState(false);
 
   // Payment method cache: maps userId -> { type, handle }
   const [paymentMethods, setPaymentMethods] = useState<
@@ -224,6 +225,21 @@ export default function TripDetailsScreen() {
     () => trip?.members.filter((member) => (member.status ?? "active") === "removed") ?? [],
     [trip?.members]
   );
+
+  const removedMembersWithBalances = useMemo(() => {
+    if (!settlement) return [];
+
+    return removedMembers.filter((member) => {
+      const balance = settlement.balances.find((b) => {
+        if (b.entity.type === 'member') {
+          return b.entity.memberId === member.id;
+        }
+        return false;
+      });
+
+      return balance && Math.abs(balance.net) >= 0.01;
+    });
+  }, [removedMembers, settlement]);
 
   useEffect(() => {
     if (!trip) {
@@ -925,7 +941,7 @@ export default function TripDetailsScreen() {
                     <View key={`transfer-${index}`} style={[styles.rowCard, compact ? styles.rowCardCompact : null]}>
                       <View style={styles.rowCopy}>
                         <AppText variant="bodySm" color="secondary" style={styles.rowTitle}>
-                          {transfer.fromDisplayName} pays {transfer.toDisplayName}
+                          {transfer.fromDisplayName} <AppText variant="bodySm" color="muted">{" >> "}</AppText>{fmt(transfer.amount)}<AppText variant="bodySm" color="muted">{" >> "}</AppText> {transfer.toDisplayName}
                         </AppText>
                       </View>
                       <AppText variant="bodySm" color="primary" style={styles.netAmount}>
@@ -948,7 +964,7 @@ export default function TripDetailsScreen() {
                     <View key={transfer.id} style={[styles.rowCard, compact ? styles.rowCardCompact : null]}>
                       <View style={styles.rowCopy}>
                         <AppText variant="bodySm" color="secondary" style={styles.rowTitle}>
-                          {transfer.fromDisplayName} pays {transfer.toDisplayName}
+                          {transfer.fromDisplayName} <AppText variant="bodySm" color="muted">{" >> "}</AppText>{fmt(transfer.amount)}<AppText variant="bodySm" color="muted">{" >> "}</AppText> {transfer.toDisplayName}
                         </AppText>
                         <AppText variant="bodySm" color="muted">
                           Status: {transfer.status}
@@ -1175,37 +1191,61 @@ export default function TripDetailsScreen() {
                 })}
               </View>
             </View>
-            {removedMembers.length ? (
+            {removedMembersWithBalances.length > 0 ? (
               <View style={styles.membersGroup}>
-                <View style={styles.membersHeaderRow}>
-                  <AppText variant="meta" color="muted">
-                    Removed members
-                  </AppText>
+                <Pressable
+                  style={styles.membersHeaderRow}
+                  onPress={() => setShowRemovedMembers(!showRemovedMembers)}
+                >
+                  <View style={styles.collapsibleHeader}>
+                    <AppText variant="bodySm" color="muted" style={styles.expandIcon}>
+                      {showRemovedMembers ? "▼" : "▶"}
+                    </AppText>
+                    <AppText variant="meta" color="muted">
+                      Removed members with balances
+                    </AppText>
+                  </View>
                   <AppText variant="bodySm" color="muted">
-                    {removedMembers.length} archived
+                    {removedMembersWithBalances.length} {removedMembersWithBalances.length === 1 ? "member" : "members"}
                   </AppText>
-                </View>
-                <View style={styles.memberList}>
-                  {removedMembers.map((member) => (
-                    <SurfaceCard key={member.id} tone="muted" style={styles.memberCard}>
-                      <View style={styles.memberIdentity}>
-                        <View style={[styles.memberAvatar, styles.memberAvatarRemoved]}>
-                          <AppText variant="bodySm" color="inverse" style={styles.memberAvatarText}>
-                            {getMemberInitials(member.displayName)}
-                          </AppText>
-                        </View>
-                        <View style={styles.memberCopy}>
-                          <AppText variant="body" color="secondary" style={styles.memberName}>
-                            {member.displayName}
-                          </AppText>
-                          <AppText variant="bodySm" color="muted">
-                            {getMemberStatusText(member)}
-                          </AppText>
-                        </View>
-                      </View>
-                    </SurfaceCard>
-                  ))}
-                </View>
+                </Pressable>
+                {showRemovedMembers && (
+                  <View style={styles.memberList}>
+                    {removedMembersWithBalances.map((member) => {
+                      const balance = settlement?.balances.find((b) =>
+                        b.entity.type === 'member' && b.entity.memberId === member.id
+                      );
+
+                      return (
+                        <SurfaceCard key={member.id} tone="muted" style={styles.memberCard}>
+                          <View style={styles.memberIdentity}>
+                            <View style={[styles.memberAvatar, styles.memberAvatarRemoved]}>
+                              <AppText variant="bodySm" color="inverse" style={styles.memberAvatarText}>
+                                {getMemberInitials(member.displayName)}
+                              </AppText>
+                            </View>
+                            <View style={styles.memberCopy}>
+                              <AppText variant="body" color="secondary" style={styles.memberName}>
+                                {member.displayName}
+                              </AppText>
+                              <AppText variant="bodySm" color="muted">
+                                {getMemberStatusText(member)}
+                              </AppText>
+                              {balance && (
+                                <AppText
+                                  variant="bodySm"
+                                  color={balance.net < 0 ? "danger" : balance.net > 0 ? "success" : "muted"}
+                                >
+                                  Balance: {fmt(balance.net)}
+                                </AppText>
+                              )}
+                            </View>
+                          </View>
+                        </SurfaceCard>
+                      );
+                    })}
+                  </View>
+                )}
               </View>
             ) : null}
             {mayManageTrip ? (
@@ -1289,6 +1329,14 @@ function createStyles(theme: Theme) {
     justifyContent: "space-between",
     alignItems: "center",
     gap: theme.spacing.md
+  },
+  collapsibleHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.xs
+  },
+  expandIcon: {
+    width: 16
   },
   memberList: {
     gap: theme.spacing.sm
