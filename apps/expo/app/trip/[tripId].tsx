@@ -563,6 +563,8 @@ export default function TripDetailsScreen() {
 
           <SectionCard
             title={editingExpenseId ? "Edit expense" : "Add expense"}
+            collapsible
+            initiallyOpen={!!editingExpenseId}
             description={
               isTripActive
                 ? editingExpenseId
@@ -695,6 +697,8 @@ export default function TripDetailsScreen() {
 
           <SectionCard
             title="Expenses"
+            collapsible
+            badge={`${expenses.length} expense${expenses.length !== 1 ? "s" : ""}`}
             description="Every expense keeps the original amount and the converted trip value."
           >
             {expenses.length ? (
@@ -746,7 +750,7 @@ export default function TripDetailsScreen() {
         </View>
 
         <View style={styles.secondaryColumn}>
-          <SectionCard title="Balances" description="Positive values are owed back. Negative values still owe the group.">
+          <SectionCard title="Balances" collapsible description="Positive values are owed back. Negative values still owe the group.">
             {settlement?.balances.map((balance) => {
               const member = trip.members.find((item) => item.id === balance.memberId);
 
@@ -774,7 +778,7 @@ export default function TripDetailsScreen() {
           </SectionCard>
 
           {trip.status === "active" ? (
-            <SectionCard title="Repayments" description="SplitTrip minimizes the number of transfers needed to settle up.">
+            <SectionCard title="Repayments" collapsible description="SplitTrip minimizes the number of transfers needed to settle up.">
               {settlement?.transfers.length ? (
                 settlement.transfers.map((transfer) => {
                   const from = trip.members.find((member) => member.id === transfer.fromMemberId);
@@ -800,7 +804,7 @@ export default function TripDetailsScreen() {
               )}
             </SectionCard>
           ) : (
-            <SectionCard title="Final payments" description="These transfers were saved when the trip was completed.">
+            <SectionCard title="Final payments" collapsible description="These transfers were saved when the trip was completed.">
               {persistedTransfers.length ? (
                 persistedTransfers.map((transfer) => {
                   const from = trip.members.find((member) => member.id === transfer.fromMemberId);
@@ -835,6 +839,9 @@ export default function TripDetailsScreen() {
 
           <SectionCard
             title="Members"
+            collapsible
+            initiallyOpen={false}
+            badge={`${activeMembers.length} member${activeMembers.length !== 1 ? "s" : ""}`}
             description={
               mayManageTrip
                 ? isTripActive
