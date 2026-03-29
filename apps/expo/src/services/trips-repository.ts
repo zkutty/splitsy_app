@@ -1,4 +1,4 @@
-import type { Expense, ExpenseDraft, MemberGroup, PaymentMethodType, SettlementTransfer, Trip, TripSettlementTransfer, UserProfile } from "@splitsy/domain";
+import type { Expense, ExpenseDraft, MemberGroup, PaymentMethodType, SettlementTransfer, SplitMode, Trip, TripSettlementTransfer, UserProfile } from "@splitsy/domain";
 import { SAMPLE_EXPENSES, SAMPLE_TRIP, SAMPLE_USER } from "@splitsy/domain";
 
 import { createSupabaseClient, hasSupabaseConfig } from "./supabase";
@@ -108,6 +108,8 @@ const demoRepository = (): TripsRepository => {
         note: draft.note,
         paidByMemberId: draft.paidByMemberId,
         involvedMemberIds: draft.involvedMemberIds,
+        splitMode: draft.splitMode ?? "equal",
+        splitShares: draft.splitShares ?? null,
         createdAt: new Date().toISOString()
       };
 
@@ -132,7 +134,9 @@ const demoRepository = (): TripsRepository => {
         customCategory: draft.customCategory,
         note: draft.note,
         paidByMemberId: draft.paidByMemberId,
-        involvedMemberIds: draft.involvedMemberIds
+        involvedMemberIds: draft.involvedMemberIds,
+        splitMode: draft.splitMode ?? "equal",
+        splitShares: draft.splitShares ?? null
       };
 
       expenses = expenses.map((expense) => (expense.id === expenseId ? updatedExpense : expense));
@@ -645,7 +649,7 @@ const supabaseRepository = (): TripsRepository => {
     listExpenses: async (tripId) => {
       const { data, error } = await supabase
         .from("expenses")
-        .select("id, trip_id, created_by_user_id, expense_date, amount, currency_code, trip_conversion_rate, trip_amount, category, custom_category, note, paid_by_member_id, created_at, expense_participants(member_id)")
+        .select("id, trip_id, created_by_user_id, expense_date, amount, currency_code, trip_conversion_rate, trip_amount, category, custom_category, note, paid_by_member_id, split_mode, created_at, expense_participants(member_id, split_share)")
         .eq("trip_id", tripId)
         .order("expense_date", { ascending: false })
         .order("created_at", { ascending: false });
@@ -654,22 +658,36 @@ const supabaseRepository = (): TripsRepository => {
         throw error;
       }
 
-      return (data ?? []).map((row: any) => ({
-        id: row.id,
-        tripId: row.trip_id,
-        createdByUserId: row.created_by_user_id,
-        expenseDate: row.expense_date,
-        amount: Number(row.amount),
-        currencyCode: row.currency_code,
-        conversionRateToTripCurrency: Number(row.trip_conversion_rate),
-        tripAmount: Number(row.trip_amount),
-        category: row.category,
-        customCategory: row.custom_category,
-        note: row.note,
-        paidByMemberId: row.paid_by_member_id,
-        involvedMemberIds: (row.expense_participants ?? []).map((item: any) => item.member_id),
-        createdAt: row.created_at
-      }));
+      return (data ?? []).map((row: any) => {
+        const participants = row.expense_participants ?? [];
+        const splitShares: Record<string, number> = {};
+        let hasSplitShares = false;
+        for (const p of participants) {
+          if (p.split_share != null) {
+            splitShares[p.member_id] = Number(p.split_share);
+            hasSplitShares = true;
+          }
+        }
+
+        return {
+          id: row.id,
+          tripId: row.trip_id,
+          createdByUserId: row.created_by_user_id,
+          expenseDate: row.expense_date,
+          amount: Number(row.amount),
+          currencyCode: row.currency_code,
+          conversionRateToTripCurrency: Number(row.trip_conversion_rate),
+          tripAmount: Number(row.trip_amount),
+          category: row.category,
+          customCategory: row.custom_category,
+          note: row.note,
+          paidByMemberId: row.paid_by_member_id,
+          involvedMemberIds: participants.map((item: any) => item.member_id),
+          splitMode: (row.split_mode ?? "equal") as SplitMode,
+          splitShares: hasSplitShares ? splitShares : null,
+          createdAt: row.created_at
+        };
+      });
     },
     listSettlementTransfers: async (tripId) => {
       const { data, error } = await supabase
@@ -729,9 +747,10 @@ const supabaseRepository = (): TripsRepository => {
           category: draft.category,
           custom_category: draft.customCategory ?? null,
           note: draft.note ?? null,
-          paid_by_member_id: draft.paidByMemberId
+          paid_by_member_id: draft.paidByMemberId,
+          split_mode: draft.splitMode ?? "equal"
         })
-        .select("id, trip_id, created_by_user_id, expense_date, amount, currency_code, trip_conversion_rate, trip_amount, category, custom_category, note, paid_by_member_id, created_at")
+        .select("id, trip_id, created_by_user_id, expense_date, amount, currency_code, trip_conversion_rate, trip_amount, category, custom_category, note, paid_by_member_id, split_mode, created_at")
         .single();
 
       if (expenseError) {
@@ -740,7 +759,8 @@ const supabaseRepository = (): TripsRepository => {
 
       const participantRows = draft.involvedMemberIds.map((memberId) => ({
         expense_id: insertedExpense.id,
-        member_id: memberId
+        member_id: memberId,
+        split_share: draft.splitShares?.[memberId] ?? null
       }));
 
       const { error: participantError } = await supabase.from("expense_participants").insert(participantRows);
@@ -763,6 +783,8 @@ const supabaseRepository = (): TripsRepository => {
         note: insertedExpense.note,
         paidByMemberId: insertedExpense.paid_by_member_id,
         involvedMemberIds: draft.involvedMemberIds,
+        splitMode: (insertedExpense.split_mode ?? "equal") as SplitMode,
+        splitShares: draft.splitShares ?? null,
         createdAt: insertedExpense.created_at
       };
     },
@@ -778,11 +800,12 @@ const supabaseRepository = (): TripsRepository => {
           category: draft.category,
           custom_category: draft.customCategory ?? null,
           note: draft.note ?? null,
-          paid_by_member_id: draft.paidByMemberId
+          paid_by_member_id: draft.paidByMemberId,
+          split_mode: draft.splitMode ?? "equal"
         })
         .eq("id", expenseId)
         .eq("trip_id", tripId)
-        .select("id, trip_id, created_by_user_id, expense_date, amount, currency_code, trip_conversion_rate, trip_amount, category, custom_category, note, paid_by_member_id, created_at")
+        .select("id, trip_id, created_by_user_id, expense_date, amount, currency_code, trip_conversion_rate, trip_amount, category, custom_category, note, paid_by_member_id, split_mode, created_at")
         .single();
 
       if (expenseError) {
@@ -800,7 +823,8 @@ const supabaseRepository = (): TripsRepository => {
 
       const participantRows = draft.involvedMemberIds.map((memberId) => ({
         expense_id: expenseId,
-        member_id: memberId
+        member_id: memberId,
+        split_share: draft.splitShares?.[memberId] ?? null
       }));
 
       const { error: participantError } = await supabase.from("expense_participants").insert(participantRows);
@@ -823,6 +847,8 @@ const supabaseRepository = (): TripsRepository => {
         note: updatedExpense.note,
         paidByMemberId: updatedExpense.paid_by_member_id,
         involvedMemberIds: draft.involvedMemberIds,
+        splitMode: (updatedExpense.split_mode ?? "equal") as SplitMode,
+        splitShares: draft.splitShares ?? null,
         createdAt: updatedExpense.created_at
       };
     },

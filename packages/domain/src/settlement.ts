@@ -45,13 +45,23 @@ export const settleTrip = (
 
     payer.paid = roundCurrency(payer.paid + expense.tripAmount);
 
-    const share = roundCurrency(expense.tripAmount / expense.involvedMemberIds.length);
-
     for (const memberId of expense.involvedMemberIds) {
       const memberBalance = individualBalances.get(memberId);
 
       if (!memberBalance) {
         continue;
+      }
+
+      let share: number;
+
+      if (expense.splitMode === "byAmount" && expense.splitShares?.[memberId] != null) {
+        // Share is stored in original currency — convert to trip currency
+        share = roundCurrency(expense.splitShares[memberId] * expense.conversionRateToTripCurrency);
+      } else if (expense.splitMode === "byPercentage" && expense.splitShares?.[memberId] != null) {
+        share = roundCurrency(expense.tripAmount * expense.splitShares[memberId] / 100);
+      } else {
+        // Default: equal split
+        share = roundCurrency(expense.tripAmount / expense.involvedMemberIds.length);
       }
 
       memberBalance.owed = roundCurrency(memberBalance.owed + share);

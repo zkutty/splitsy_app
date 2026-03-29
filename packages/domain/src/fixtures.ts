@@ -38,6 +38,8 @@ export const SAMPLE_EXPENSES: Expense[] = [
     note: "Apartment deposit",
     paidByMemberId: "mia",
     involvedMemberIds: ["mia", "leo", "zoe"],
+    splitMode: "equal",
+    splitShares: null,
     createdAt: "2026-03-24T14:00:00.000Z"
   },
   {
@@ -53,6 +55,8 @@ export const SAMPLE_EXPENSES: Expense[] = [
     note: "Museum tickets",
     paidByMemberId: "leo",
     involvedMemberIds: ["leo", "zoe"],
+    splitMode: "equal",
+    splitShares: null,
     createdAt: "2026-03-24T15:00:00.000Z"
   }
 ];

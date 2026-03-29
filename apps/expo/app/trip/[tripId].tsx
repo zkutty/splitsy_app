@@ -5,7 +5,7 @@ import * as Haptics from "expo-haptics";
 import { Platform, Pressable, RefreshControl, ScrollView, Share, StyleSheet, View, useWindowDimensions } from "react-native";
 
 import { PRESET_CATEGORIES, settleTrip, validateExpenseDraft } from "@splitsy/domain";
-import type { Expense, MemberGroup, PaymentMethodType, TripSettlementTransfer } from "@splitsy/domain";
+import type { Expense, MemberGroup, PaymentMethodType, SplitMode, TripSettlementTransfer } from "@splitsy/domain";
 
 import { formatCurrency } from "../../src/lib/format";
 import { buildPaymentLink, getPaymentMethodLabel } from "../../src/lib/payment-links";
@@ -78,6 +78,8 @@ export default function TripDetailsScreen() {
   const [note, setNote] = useState("");
   const [paidByMemberId, setPaidByMemberId] = useState(trip?.members[0]?.id ?? "");
   const [selectedMembers, setSelectedMembers] = useState<string[]>(trip?.members.map((member) => member.id) ?? []);
+  const [splitMode, setSplitMode] = useState<SplitMode>("equal");
+  const [splitShares, setSplitShares] = useState<Record<string, string>>({});
   const [memberName, setMemberName] = useState("");
   const [memberEmail, setMemberEmail] = useState("");
   const [errors, setErrors] = useState<string[]>([]);
@@ -370,6 +372,12 @@ export default function TripDetailsScreen() {
     }
 
     const numericAmount = Number(amount);
+    const numericShares: Record<string, number> | null =
+      splitMode !== "equal"
+        ? Object.fromEntries(
+            selectedMembers.map((id) => [id, Number(splitShares[id] || 0)])
+          )
+        : null;
     const draft = {
       expenseDate,
       amount: numericAmount,
@@ -378,7 +386,9 @@ export default function TripDetailsScreen() {
       customCategory,
       note,
       paidByMemberId,
-      involvedMemberIds: selectedMembers
+      involvedMemberIds: selectedMembers,
+      splitMode,
+      splitShares: numericShares
     };
     const result = validateExpenseDraft(draft);
 
@@ -411,6 +421,8 @@ export default function TripDetailsScreen() {
       setAmount("");
       setNote("");
       setCustomCategory("");
+      setSplitMode("equal");
+      setSplitShares({});
       setEditingExpenseId(null);
       setErrors([]);
 
@@ -452,6 +464,14 @@ export default function TripDetailsScreen() {
     setNote(expense.note ?? "");
     setPaidByMemberId(expense.paidByMemberId);
     setSelectedMembers(expense.involvedMemberIds);
+    setSplitMode(expense.splitMode ?? "equal");
+    setSplitShares(
+      expense.splitShares
+        ? Object.fromEntries(
+            Object.entries(expense.splitShares).map(([k, v]) => [k, String(v)])
+          )
+        : {}
+    );
     setErrors([]);
   };
 
@@ -465,6 +485,8 @@ export default function TripDetailsScreen() {
     setNote("");
     setPaidByMemberId(activeMembers[0]?.id ?? "");
     setSelectedMembers(activeMembers.map((member) => member.id));
+    setSplitMode("equal");
+    setSplitShares({});
     setErrors([]);
   };
 
@@ -893,6 +915,60 @@ export default function TripDetailsScreen() {
               </View>
             </View>
 
+            <View style={styles.group}>
+              <AppText variant="meta" color="muted">
+                Split mode
+              </AppText>
+              <View style={styles.chipWrap}>
+                <Chip
+                  label="Equal"
+                  selected={splitMode === "equal"}
+                  onPress={isTripActive ? () => { setSplitMode("equal"); setSplitShares({}); } : undefined}
+                />
+                <Chip
+                  label="By amount"
+                  selected={splitMode === "byAmount"}
+                  onPress={isTripActive ? () => setSplitMode("byAmount") : undefined}
+                />
+                <Chip
+                  label="By %"
+                  selected={splitMode === "byPercentage"}
+                  onPress={isTripActive ? () => setSplitMode("byPercentage") : undefined}
+                />
+              </View>
+            </View>
+
+            {splitMode !== "equal" && selectedMembers.length > 0 ? (
+              <View style={styles.group}>
+                <AppText variant="meta" color="muted">
+                  {splitMode === "byAmount" ? "Amount per person" : "Percentage per person"}
+                </AppText>
+                {selectedMembers.map((memberId) => {
+                  const member = expenseFormMembers.find((m) => m.id === memberId);
+                  if (!member) return null;
+
+                  return (
+                    <AppInput
+                      key={memberId}
+                      label={member.displayName}
+                      value={splitShares[memberId] ?? ""}
+                      onChangeText={(val) =>
+                        setSplitShares((prev) => ({ ...prev, [memberId]: val }))
+                      }
+                      placeholder={splitMode === "byAmount" ? "0.00" : "0"}
+                      keyboardType="decimal-pad"
+                      editable={isTripActive}
+                    />
+                  );
+                })}
+                <AppText variant="bodySm" color="muted">
+                  {splitMode === "byAmount"
+                    ? `Total: ${Object.values(splitShares).reduce((s, v) => s + (Number(v) || 0), 0).toFixed(2)} of ${amount || "0"}`
+                    : `Total: ${Object.values(splitShares).reduce((s, v) => s + (Number(v) || 0), 0).toFixed(1)}%`}
+                </AppText>
+              </View>
+            ) : null}
+
             {errors.length > 0 ? (
               <SurfaceCard tone="muted" style={styles.errorBox}>
                 {errors.map((error) => (
@@ -942,9 +1018,16 @@ export default function TripDetailsScreen() {
                     </View>
                     <View style={[styles.expenseMeta, compact ? styles.expenseMetaCompact : null]}>
                       <AppText variant="bodySm" color="muted">
-                        Split between:{" "}
+                        Split{expense.splitMode && expense.splitMode !== "equal" ? ` (${expense.splitMode === "byAmount" ? "by amount" : "by %"})` : ""}: {" "}
                         {expense.involvedMemberIds
-                          .map((id) => trip.members.find((m) => m.id === id)?.displayName ?? "Unknown")
+                          .map((id) => {
+                            const name = trip.members.find((m) => m.id === id)?.displayName ?? "Unknown";
+                            if (expense.splitShares?.[id] != null && expense.splitMode !== "equal") {
+                              const share = expense.splitShares[id];
+                              return `${name} (${expense.splitMode === "byPercentage" ? `${share}%` : formatCurrency(share, expense.currencyCode)})`;
+                            }
+                            return name;
+                          })
                           .join(", ")}
                       </AppText>
                       {canEditExpense(expense.id) ? (

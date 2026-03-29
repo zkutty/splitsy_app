@@ -3,6 +3,7 @@ export type TripStatus = "active" | "completed" | "settled";
 export type SettlementTransferStatus = "pending" | "paid" | "confirmed";
 export type MemberStatus = "active" | "removed";
 export type PaymentMethodType = "venmo" | "paypal" | "cashapp";
+export type SplitMode = "equal" | "byAmount" | "byPercentage";
 
 export type ExpenseCategoryId =
   | "lodging"
@@ -66,6 +67,7 @@ export type ExpenseCategory = {
 
 export type ExpenseParticipant = {
   memberId: string;
+  splitShare?: number | null;
 };
 
 export type Expense = {
@@ -82,6 +84,8 @@ export type Expense = {
   note?: string | null;
   paidByMemberId: string;
   involvedMemberIds: string[];
+  splitMode: SplitMode;
+  splitShares?: Record<string, number> | null;
   createdAt: string;
 };
 
@@ -94,6 +98,8 @@ export type ExpenseDraft = {
   note?: string | null;
   paidByMemberId: string;
   involvedMemberIds: string[];
+  splitMode: SplitMode;
+  splitShares?: Record<string, number> | null;
 };
 
 export type SettlementEntity =
