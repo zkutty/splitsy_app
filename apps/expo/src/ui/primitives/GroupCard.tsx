@@ -15,6 +15,7 @@ type GroupCardProps = {
   onEdit?: () => void;
   onDelete?: () => void;
   onRemoveMember?: (memberId: string) => void;
+  onAddMember?: () => void;
   compact?: boolean;
 };
 
@@ -25,6 +26,7 @@ export function GroupCard({
   onEdit,
   onDelete,
   onRemoveMember,
+  onAddMember,
   compact = false
 }: GroupCardProps) {
   const { theme } = useAppTheme();
@@ -46,6 +48,11 @@ export function GroupCard({
         </View>
         {canEdit && (
           <View style={[styles.headerActions, compact ? styles.headerActionsCompact : null]}>
+            {onAddMember && (
+              <AppButton onPress={onAddMember} variant="secondary" fullWidth={false}>
+                + Add member
+              </AppButton>
+            )}
             {onEdit && (
               <AppButton onPress={onEdit} variant="secondary" fullWidth={false}>
                 Edit name

@@ -24,6 +24,7 @@ import { SectionCard } from "../../src/ui/primitives/SectionCard";
 import { SurfaceCard } from "../../src/ui/primitives/SurfaceCard";
 import { GroupCard } from "../../src/ui/primitives/GroupCard";
 import { GroupEditor } from "../../src/ui/primitives/GroupEditor";
+import { GroupMemberPicker } from "../../src/ui/primitives/GroupMemberPicker";
 import { ExpandableBalance } from "../../src/ui/primitives/ExpandableBalance";
 import { ExpenseFilters } from "../../src/ui/primitives/ExpenseFilters";
 import { ExpenseSummaryView } from "../../src/ui/primitives/ExpenseSummaryView";
@@ -100,6 +101,7 @@ export default function TripDetailsScreen() {
   const [showGroupEditor, setShowGroupEditor] = useState(false);
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [memberPickerGroupId, setMemberPickerGroupId] = useState<string | null>(null);
   const [showRemovedMembers, setShowRemovedMembers] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -1103,6 +1105,7 @@ export default function TripDetailsScreen() {
                       onEdit={() => openEditGroupModal(group.id)}
                       onDelete={() => handleDeleteGroup(group.id)}
                       onRemoveMember={handleRemoveMemberFromGroup}
+                      onAddMember={ungroupedMembers.length > 0 ? () => setMemberPickerGroupId(group.id) : undefined}
                       compact={compact}
                     />
                   ))}
@@ -1127,20 +1130,9 @@ export default function TripDetailsScreen() {
                         <AppText variant="bodySm" color="secondary">
                           {member.displayName}
                         </AppText>
-                        {mayManageTrip && isTripActive && groups.length > 0 && (
-                          <View style={styles.chipWrap}>
-                            {groups.map((group) => (
-                              <AppButton
-                                key={group.id}
-                                onPress={() => addMemberToGroup(tripId, member.id, group.id)}
-                                variant="secondary"
-                                fullWidth={false}
-                              >
-                                Add to {group.name}
-                              </AppButton>
-                            ))}
-                          </View>
-                        )}
+                        <AppText variant="bodySm" color="muted">
+                          Not in a group
+                        </AppText>
                       </View>
                     </SurfaceCard>
                   ))}
@@ -1518,6 +1510,18 @@ export default function TripDetailsScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <GroupMemberPicker
+        visible={memberPickerGroupId !== null}
+        title={`Add member to ${groups.find((g) => g.id === memberPickerGroupId)?.name ?? "group"}`}
+        members={ungroupedMembers}
+        onClose={() => setMemberPickerGroupId(null)}
+        onSelect={async (memberId) => {
+          if (!memberPickerGroupId) return;
+          await addMemberToGroup(tripId, memberId, memberPickerGroupId);
+          setMemberPickerGroupId(null);
+        }}
+      />
 
       <GroupEditor
         visible={showGroupEditor}
