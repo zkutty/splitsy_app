@@ -1,6 +1,7 @@
 import { Redirect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as Linking from "expo-linking";
+import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { Modal, Platform, Pressable, RefreshControl, ScrollView, Share, StyleSheet, View, useWindowDimensions } from "react-native";
 
@@ -764,33 +765,22 @@ export default function TripDetailsScreen() {
     }
   };
 
+  const copyInviteLink = async (link: string): Promise<void> => {
+    try {
+      await Clipboard.setStringAsync(link);
+      setInviteFeedback("Invite link copied to clipboard.");
+      if (Platform.OS === "ios") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch {
+      setInviteFeedback("Link created. Tap the field to copy it.");
+    }
+  };
+
   const inviteTrip = async (): Promise<void> => {
     const link = inviteLink || (await createInviteLinkValue());
-
-    if (!link) {
-      return;
-    }
-
-    if (
-      Platform.OS === "web" &&
-      typeof navigator !== "undefined" &&
-      navigator.clipboard &&
-      typeof navigator.clipboard.writeText === "function"
-    ) {
-      try {
-        await navigator.clipboard.writeText(link);
-        setInviteFeedback("Invite link copied to clipboard.");
-        return;
-      } catch {
-        setInviteFeedback("Invite link created. Copy it from the field below.");
-        return;
-      }
-    }
-
-    await Share.share({
-      message: `Join my SplitTrip workspace: ${link}`,
-      url: link
-    });
+    if (!link) return;
+    await copyInviteLink(link);
   };
 
   const clearAllFilters = () => {
@@ -1068,17 +1058,22 @@ export default function TripDetailsScreen() {
               <View style={styles.group}>
                 <View style={[styles.actionRow, compact ? styles.actionRowCompact : null]}>
                   <AppButton onPress={inviteTrip} disabled={isCreatingInvite} variant="secondary">
-                    {isCreatingInvite ? "Creating link..." : "Invite"}
+                    {isCreatingInvite ? "Creating link..." : "Create invite link"}
                   </AppButton>
                 </View>
                 {inviteLink ? (
-                  <AppInput
-                    label="Latest invite link"
-                    value={inviteLink}
-                    onChangeText={setInviteLink}
-                    editable={false}
-                    helperText="This invite link is one-time use in the current implementation."
-                  />
+                  <View style={styles.group}>
+                    <AppInput
+                      label="Latest invite link"
+                      value={inviteLink}
+                      onChangeText={setInviteLink}
+                      editable={false}
+                      helperText="This invite link is one-time use in the current implementation."
+                    />
+                    <AppButton onPress={() => copyInviteLink(inviteLink)} variant="secondary" fullWidth={false}>
+                      Copy link
+                    </AppButton>
+                  </View>
                 ) : null}
                 {inviteFeedback ? (
                   <AppText variant="bodySm" color="muted">
