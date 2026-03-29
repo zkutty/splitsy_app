@@ -5,11 +5,12 @@ import * as Haptics from "expo-haptics";
 import { Platform, Pressable, RefreshControl, ScrollView, Share, StyleSheet, View, useWindowDimensions } from "react-native";
 
 import { PRESET_CATEGORIES, settleTrip, validateExpenseDraft } from "@splitsy/domain";
-import type { Expense, MemberGroup, PaymentMethodType, SplitMode, TripSettlementTransfer } from "@splitsy/domain";
+import type { Expense, ExpenseCategoryId, MemberGroup, PaymentMethodType, SplitMode, TripSettlementTransfer } from "@splitsy/domain";
 
 import { formatCurrency } from "../../src/lib/format";
 import { buildPaymentLink, getPaymentMethodLabel } from "../../src/lib/payment-links";
 import { fetchConversionRate } from "../../src/lib/rates";
+import { matchesSearch, calculateSummary } from "../../src/lib/expense-utils";
 import { useSession } from "../../src/providers/session-provider";
 import { useTrips } from "../../src/providers/trips-provider";
 import { AppScreen } from "../../src/ui/layout/AppScreen";
@@ -24,6 +25,8 @@ import { SurfaceCard } from "../../src/ui/primitives/SurfaceCard";
 import { GroupCard } from "../../src/ui/primitives/GroupCard";
 import { GroupEditor } from "../../src/ui/primitives/GroupEditor";
 import { ExpandableBalance } from "../../src/ui/primitives/ExpandableBalance";
+import { ExpenseFilters } from "../../src/ui/primitives/ExpenseFilters";
+import { ExpenseSummaryView } from "../../src/ui/primitives/ExpenseSummaryView";
 import { Theme, useAppTheme } from "../../src/ui/theme";
 
 export default function TripDetailsScreen() {
@@ -98,6 +101,14 @@ export default function TripDetailsScreen() {
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [showRemovedMembers, setShowRemovedMembers] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Filter and view state for expenses
+  const [viewMode, setViewMode] = useState<'list' | 'summary'>('list');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [dateFrom, setDateFrom] = useState<string | null>(null);
+  const [dateTo, setDateTo] = useState<string | null>(null);
+  const [selectedCategories, setSelectedCategories] = useState<Set<ExpenseCategoryId>>(new Set());
+  const [selectedPayerId, setSelectedPayerId] = useState<string | null>(null);
 
   // Payment method cache: maps userId -> { type, handle }
   const [paymentMethods, setPaymentMethods] = useState<
@@ -208,6 +219,35 @@ export default function TripDetailsScreen() {
       setExpenseDate(new Date().toISOString().slice(0, 10));
     }
   }, [editingExpenseId]);
+
+  // Filtered expenses based on search and filters
+  const filteredExpenses = useMemo(() => {
+    return expenses.filter(expense => {
+      if (searchQuery && !matchesSearch(expense, searchQuery)) return false;
+      if (dateFrom && expense.expenseDate < dateFrom) return false;
+      if (dateTo && expense.expenseDate > dateTo) return false;
+      if (selectedCategories.size > 0 && !selectedCategories.has(expense.category)) return false;
+      if (selectedPayerId && expense.paidByMemberId !== selectedPayerId) return false;
+      return true;
+    });
+  }, [expenses, searchQuery, dateFrom, dateTo, selectedCategories, selectedPayerId]);
+
+  // Active filter count
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (searchQuery) count++;
+    if (dateFrom) count++;
+    if (dateTo) count++;
+    if (selectedCategories.size > 0) count++;
+    if (selectedPayerId) count++;
+    return count;
+  }, [searchQuery, dateFrom, dateTo, selectedCategories, selectedPayerId]);
+
+  // Summary data
+  const summaryData = useMemo(() =>
+    calculateSummary(filteredExpenses, trip?.members ?? [], trip?.tripCurrencyCode ?? "USD"),
+    [filteredExpenses, trip?.members, trip?.tripCurrencyCode]
+  );
 
   const settlement = useMemo(() => {
     if (!trip) {
@@ -747,6 +787,14 @@ export default function TripDetailsScreen() {
     });
   };
 
+  const clearAllFilters = () => {
+    setSearchQuery('');
+    setDateFrom(null);
+    setDateTo(null);
+    setSelectedCategories(new Set());
+    setSelectedPayerId(null);
+  };
+
   return (
     <AppScreen maxWidth={1200} refreshControl={
       Platform.OS !== "web" ? (
@@ -994,11 +1042,46 @@ export default function TripDetailsScreen() {
           <SectionCard
             title="Expenses"
             collapsible
-            badge={`${expenses.length} expense${expenses.length !== 1 ? "s" : ""}`}
+            badge={activeFilterCount > 0 ? `${filteredExpenses.length} of ${expenses.length}` : `${expenses.length} expense${expenses.length !== 1 ? "s" : ""}`}
             description="Every expense keeps the original amount and the converted trip value."
           >
-              {expenses.length ? (
-                expenses.map((expense) => (
+            {/* View toggle */}
+            <View style={styles.viewToggle}>
+              <Chip
+                label="List"
+                selected={viewMode === 'list'}
+                onPress={() => setViewMode('list')}
+              />
+              <Chip
+                label="Summary"
+                selected={viewMode === 'summary'}
+                onPress={() => setViewMode('summary')}
+              />
+            </View>
+
+            {/* Filters */}
+            <ExpenseFilters
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              dateFrom={dateFrom}
+              onDateFromChange={setDateFrom}
+              dateTo={dateTo}
+              onDateToChange={setDateTo}
+              selectedCategories={selectedCategories}
+              onCategoriesChange={setSelectedCategories}
+              selectedPayerId={selectedPayerId}
+              onPayerChange={setSelectedPayerId}
+              members={activeMembers}
+              activeFilterCount={activeFilterCount}
+              onClearAll={clearAllFilters}
+              compact={compact}
+              initiallyOpen={!compact}
+            />
+
+            {/* Content - List or Summary */}
+            {viewMode === 'list' ? (
+              filteredExpenses.length ? (
+                filteredExpenses.map((expense) => (
                   <View key={expense.id} style={[styles.rowCard, compact ? styles.rowCardCompact : null]}>
                     <View style={styles.rowCopy}>
                       <AppText variant="bodySm" color="secondary" style={styles.rowTitle}>
@@ -1049,9 +1132,18 @@ export default function TripDetailsScreen() {
                 ))
               ) : (
                 <AppText variant="bodySm" color="muted">
-                  No expenses yet. Add the first one above to start balancing the trip.
+                  {expenses.length === 0
+                    ? "No expenses yet. Add the first one above to start balancing the trip."
+                    : "No expenses match your filters."}
                 </AppText>
-              )}
+              )
+            ) : (
+              <ExpenseSummaryView
+                summary={summaryData}
+                formatAmount={fmt}
+                compact={compact}
+              />
+            )}
           </SectionCard>
         </View>
 
@@ -1466,6 +1558,10 @@ function createStyles(theme: Theme, compact: boolean) {
   chipWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
+    gap: theme.spacing.sm
+  },
+  viewToggle: {
+    flexDirection: "row",
     gap: theme.spacing.sm
   },
   membersGroup: {
