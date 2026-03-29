@@ -36,7 +36,7 @@ export function AppScreen({ children, maxWidth, contentStyle, showHeaderMenu = f
         keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
         refreshControl={refreshControl}
       >
-        <View style={[styles.shell, { maxWidth: contentMaxWidth, gap: compact ? theme.spacing.sm : theme.spacing.lg }, contentStyle]}>
+        <View style={[styles.shell, { maxWidth: contentMaxWidth, gap: compact ? theme.spacing.xs : theme.spacing.lg }, contentStyle]}>
           {showMobileHeader ? (
             <View style={styles.mobileHeader}>
               <BrandMark compact />

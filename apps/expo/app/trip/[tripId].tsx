@@ -1353,7 +1353,7 @@ export default function TripDetailsScreen() {
 function createStyles(theme: Theme, compact: boolean) {
   return StyleSheet.create({
   layout: {
-    gap: compact ? theme.spacing.sm : theme.spacing.lg
+    gap: compact ? theme.spacing.xs : theme.spacing.lg
   },
   layoutWide: {
     flexDirection: "row",
@@ -1361,11 +1361,11 @@ function createStyles(theme: Theme, compact: boolean) {
   },
   primaryColumn: {
     flex: 1.5,
-    gap: compact ? theme.spacing.sm : theme.spacing.lg
+    gap: compact ? theme.spacing.xs : theme.spacing.lg
   },
   secondaryColumn: {
     flex: 1,
-    gap: compact ? theme.spacing.sm : theme.spacing.lg
+    gap: compact ? theme.spacing.xs : theme.spacing.lg
   },
   summaryCard: {
     gap: theme.spacing.sm
