@@ -971,7 +971,10 @@ export default function TripDetailsScreen() {
                     </View>
                     <View style={[styles.expenseMeta, compact ? styles.expenseMetaCompact : null]}>
                       <AppText variant="bodySm" color="muted">
-                        {expense.involvedMemberIds.length} people
+                        Split between:{" "}
+                        {expense.involvedMemberIds
+                          .map((id) => trip.members.find((m) => m.id === id)?.displayName ?? "Unknown")
+                          .join(", ")}
                       </AppText>
                       {canEditExpense(expense.id) ? (
                         <View style={[styles.expenseActions, compact ? styles.expenseActionsCompact : null]}>
