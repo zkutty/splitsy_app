@@ -732,7 +732,7 @@ export default function TripDetailsScreen() {
       ) : undefined
     }>
       <View style={[styles.layout, wide ? styles.layoutWide : null]}>
-        <View style={styles.primaryColumn}>
+        <View style={[styles.primaryColumn, wide ? styles.primaryColumnWide : null]}>
           <SurfaceCard tone="hero" style={styles.summaryCard}>
             <AppText variant="eyebrow" color="accent">
               Trip Summary
@@ -972,7 +972,7 @@ export default function TripDetailsScreen() {
           </SectionCard>
         </View>
 
-        <View style={styles.secondaryColumn}>
+        <View style={[styles.secondaryColumn, wide ? styles.secondaryColumnWide : null]}>
           <SectionCard title="Balances" collapsible description="Positive values are owed back. Negative values still owe the group.">
             {settlement?.balances.map((balance) => {
               const key = balance.entity.type === 'group'
@@ -1360,12 +1360,16 @@ function createStyles(theme: Theme, compact: boolean) {
     alignItems: "flex-start"
   },
   primaryColumn: {
-    flex: 1.5,
     gap: compact ? theme.spacing.xs : theme.spacing.lg
   },
+  primaryColumnWide: {
+    flex: 1.5
+  },
   secondaryColumn: {
-    flex: 1,
     gap: compact ? theme.spacing.xs : theme.spacing.lg
+  },
+  secondaryColumnWide: {
+    flex: 1
   },
   summaryCard: {
     gap: theme.spacing.sm
