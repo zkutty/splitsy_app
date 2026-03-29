@@ -21,7 +21,7 @@ type CurrencyPickerProps = {
   label?: string;
 };
 
-const MAJOR_CODES = new Set(MAJOR_CURRENCIES.map((c) => c.code));
+const MAJOR_CODES = new Set<string>(MAJOR_CURRENCIES.map((c) => c.code as string));
 
 export function CurrencyPicker({ value, onChange, disabled, label }: CurrencyPickerProps) {
   const { theme } = useAppTheme();
@@ -113,7 +113,7 @@ export function CurrencyPicker({ value, onChange, disabled, label }: CurrencyPic
   );
 
   const ItemSeparator = useCallback(
-    ({ leadingItem }: { leadingItem: { isMajor: boolean } }) => {
+    ({ leadingItem }: { leadingItem: { code: string; label: string; isMajor: boolean } }) => {
       if (leadingItem.isMajor && separatorIndex > 0) {
         // This is the boundary between major and other currencies
         const nextItem = filtered[filtered.indexOf(leadingItem) + 1];

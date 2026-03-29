@@ -8,6 +8,7 @@ import { AppButton } from "../../src/ui/primitives/AppButton";
 import { AppInput } from "../../src/ui/primitives/AppInput";
 import { AppText } from "../../src/ui/primitives/AppText";
 import { CurrencyPicker } from "../../src/ui/primitives/CurrencyPicker";
+import { DatePicker } from "../../src/ui/primitives/DatePicker";
 import { SurfaceCard } from "../../src/ui/primitives/SurfaceCard";
 import { Theme, useAppTheme } from "../../src/ui/theme";
 
@@ -133,21 +134,20 @@ export default function TripsScreen() {
             </View>
             <View style={compact ? styles.formFieldsCompact : styles.formFieldsWide}>
               <View style={styles.formField}>
-                <AppInput
+                <DatePicker
                   label="Start date"
                   value={startDate}
-                  onChangeText={setStartDate}
-                  placeholder="2026-06-10"
-                  helperText="YYYY-MM-DD"
+                  onChange={setStartDate}
+                  helperText="Optional"
                 />
               </View>
               <View style={styles.formField}>
-                <AppInput
+                <DatePicker
                   label="End date"
                   value={endDate}
-                  onChangeText={setEndDate}
-                  placeholder="2026-06-17"
-                  helperText="YYYY-MM-DD"
+                  onChange={setEndDate}
+                  helperText="Optional"
+                  minimumDate={startDate ? new Date(startDate) : undefined}
                 />
               </View>
             </View>

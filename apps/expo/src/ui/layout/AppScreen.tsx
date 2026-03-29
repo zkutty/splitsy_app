@@ -1,5 +1,5 @@
-import { PropsWithChildren, useMemo } from "react";
-import { Platform, ScrollView, StyleProp, StyleSheet, View, ViewStyle, useWindowDimensions } from "react-native";
+import { PropsWithChildren, ReactElement, useMemo } from "react";
+import { Platform, RefreshControl, RefreshControlProps, ScrollView, StyleProp, StyleSheet, View, ViewStyle, useWindowDimensions } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppHeaderMenu } from "../navigation/AppHeaderMenu";
@@ -10,9 +10,10 @@ type AppScreenProps = PropsWithChildren<{
   maxWidth?: number;
   contentStyle?: StyleProp<ViewStyle>;
   showHeaderMenu?: boolean;
+  refreshControl?: ReactElement<RefreshControlProps>;
 }>;
 
-export function AppScreen({ children, maxWidth, contentStyle, showHeaderMenu = false }: AppScreenProps) {
+export function AppScreen({ children, maxWidth, contentStyle, showHeaderMenu = false, refreshControl }: AppScreenProps) {
   const { theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { width } = useWindowDimensions();
@@ -32,6 +33,7 @@ export function AppScreen({ children, maxWidth, contentStyle, showHeaderMenu = f
         ]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+        refreshControl={refreshControl}
       >
         <View style={[styles.shell, { maxWidth: contentMaxWidth }, contentStyle]}>
           {showMobileHeader ? (

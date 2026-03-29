@@ -1,12 +1,14 @@
 import { Redirect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as Linking from "expo-linking";
-import { Platform, Share, StyleSheet, View, useWindowDimensions } from "react-native";
+import * as Haptics from "expo-haptics";
+import { Platform, Pressable, RefreshControl, ScrollView, Share, StyleSheet, View, useWindowDimensions } from "react-native";
 
 import { PRESET_CATEGORIES, settleTrip, validateExpenseDraft } from "@splitsy/domain";
-import type { Expense, TripSettlementTransfer } from "@splitsy/domain";
+import type { Expense, MemberGroup, PaymentMethodType, TripSettlementTransfer } from "@splitsy/domain";
 
 import { formatCurrency } from "../../src/lib/format";
+import { buildPaymentLink, getPaymentMethodLabel } from "../../src/lib/payment-links";
 import { fetchConversionRate } from "../../src/lib/rates";
 import { useSession } from "../../src/providers/session-provider";
 import { useTrips } from "../../src/providers/trips-provider";
@@ -16,8 +18,12 @@ import { AppInput } from "../../src/ui/primitives/AppInput";
 import { AppText } from "../../src/ui/primitives/AppText";
 import { Chip } from "../../src/ui/primitives/Chip";
 import { CurrencyPicker } from "../../src/ui/primitives/CurrencyPicker";
+import { DatePicker } from "../../src/ui/primitives/DatePicker";
 import { SectionCard } from "../../src/ui/primitives/SectionCard";
 import { SurfaceCard } from "../../src/ui/primitives/SurfaceCard";
+import { GroupCard } from "../../src/ui/primitives/GroupCard";
+import { GroupEditor } from "../../src/ui/primitives/GroupEditor";
+import { ExpandableBalance } from "../../src/ui/primitives/ExpandableBalance";
 import { Theme, useAppTheme } from "../../src/ui/theme";
 
 export default function TripDetailsScreen() {
@@ -42,7 +48,14 @@ export default function TripDetailsScreen() {
     deleteExpense,
     addTripMember,
     removeTripMember,
-    isLoading
+    isLoading,
+    getPaymentMethodForUser,
+    createGroup,
+    updateGroup,
+    deleteGroup,
+    addMemberToGroup,
+    removeMemberFromGroup,
+    getGroupsForTrip
   } = useTrips();
   const { theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -52,6 +65,7 @@ export default function TripDetailsScreen() {
   const mayCompleteTrip = canCompleteTrip(tripId);
   const expenses = getExpensesForTrip(tripId);
   const persistedTransfers = getSettlementTransfersForTrip(tripId);
+  const groups = getGroupsForTrip(tripId);
   const { width } = useWindowDimensions();
   const wide = width >= 1040;
   const compact = width < 768;
@@ -78,6 +92,15 @@ export default function TripDetailsScreen() {
   const [activeMemberId, setActiveMemberId] = useState<string | null>(null);
   const [memberPendingRemovalId, setMemberPendingRemovalId] = useState<string | null>(null);
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
+  const [showGroupEditor, setShowGroupEditor] = useState(false);
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [showRemovedMembers, setShowRemovedMembers] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Payment method cache: maps userId -> { type, handle }
+  const [paymentMethods, setPaymentMethods] = useState<
+    Record<string, { type: PaymentMethodType | null; handle: string | null }>
+  >({});
 
   // Display currency — lets the user view all totals/settlements in a different currency
   const [displayCurrency, setDisplayCurrency] = useState(trip?.tripCurrencyCode ?? "USD");
@@ -136,6 +159,48 @@ export default function TripDetailsScreen() {
     };
   }, [displayCurrency, trip?.tripCurrencyCode]);
 
+  // Load payment methods for transfer recipients when trip is completed
+  useEffect(() => {
+    if (!trip || trip.status === "active" || !persistedTransfers.length) return;
+
+    const recipientUserIds = new Set<string>();
+    for (const transfer of persistedTransfers) {
+      if (transfer.toEntity.type === 'member') {
+        const toEntity = transfer.toEntity;
+        const member = trip.members.find((m) => m.id === toEntity.memberId);
+        if (member?.userId && !paymentMethods[member.userId]) {
+          recipientUserIds.add(member.userId);
+        }
+      } else if (transfer.toEntity.type === 'group') {
+        const toEntity = transfer.toEntity;
+        // For groups, load payment methods for all group members
+        const groupMembers = trip.members.filter((m) => m.groupId === toEntity.groupId);
+        for (const member of groupMembers) {
+          if (member.userId && !paymentMethods[member.userId]) {
+            recipientUserIds.add(member.userId);
+          }
+        }
+      }
+    }
+
+    if (recipientUserIds.size === 0) return;
+
+    let cancelled = false;
+    for (const userId of recipientUserIds) {
+      getPaymentMethodForUser(userId)
+        .then((pm) => {
+          if (!cancelled) {
+            setPaymentMethods((prev) => ({ ...prev, [userId]: pm }));
+          }
+        })
+        .catch(() => {});
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [trip?.id, trip?.status, persistedTransfers.length]);
+
   useEffect(() => {
     if (!editingExpenseId) {
       setExpenseDate(new Date().toISOString().slice(0, 10));
@@ -149,10 +214,11 @@ export default function TripDetailsScreen() {
 
     return settleTrip(
       expenses,
-      trip.members.map((member) => member.id),
+      trip.members,
+      groups,
       trip.tripCurrencyCode
     );
-  }, [expenses, trip]);
+  }, [expenses, trip, groups]);
 
   const tripCreator = trip?.members.find((member) => member.userId === trip.createdByUserId);
   const isTripActive = trip?.status === "active";
@@ -174,6 +240,21 @@ export default function TripDetailsScreen() {
     () => trip?.members.filter((member) => (member.status ?? "active") === "removed") ?? [],
     [trip?.members]
   );
+
+  const removedMembersWithBalances = useMemo(() => {
+    if (!settlement) return [];
+
+    return removedMembers.filter((member) => {
+      const balance = settlement.balances.find((b) => {
+        if (b.entity.type === 'member') {
+          return b.entity.memberId === member.id;
+        }
+        return false;
+      });
+
+      return balance && Math.abs(balance.net) >= 0.01;
+    });
+  }, [removedMembers, settlement]);
 
   useEffect(() => {
     if (!trip) {
@@ -232,6 +313,30 @@ export default function TripDetailsScreen() {
     setSelectedMembers((current) =>
       current.includes(memberId) ? current.filter((id) => id !== memberId) : [...current, memberId]
     );
+  };
+
+  const toggleGroup = (groupId: string) => {
+    const group = groups.find((g) => g.id === groupId);
+    if (!group) return;
+
+    const allSelected = group.memberIds.every((id) => selectedMembers.includes(id));
+
+    setSelectedMembers((current) => {
+      if (allSelected) {
+        // Deselect all members in the group
+        return current.filter((id) => !group.memberIds.includes(id));
+      } else {
+        // Select all members in the group
+        const newMembers = group.memberIds.filter((id) => !current.includes(id));
+        return [...current, ...newMembers];
+      }
+    });
+  };
+
+  const isGroupSelected = (groupId: string) => {
+    const group = groups.find((g) => g.id === groupId);
+    if (!group) return false;
+    return group.memberIds.every((id) => selectedMembers.includes(id));
   };
 
   const getMemberStatusText = (member: (typeof trip.members)[number]) => {
@@ -308,10 +413,30 @@ export default function TripDetailsScreen() {
       setCustomCategory("");
       setEditingExpenseId(null);
       setErrors([]);
+
+      // Close form on mobile after successful save
+      if (compact && !editingExpenseId) {
+        setShowExpenseForm(false);
+      }
+
+      // Haptic feedback on iOS
+      if (Platform.OS === "ios") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
     } finally {
       setIsSavingExpense(false);
     }
   };
+
+  const onRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    setTimeout(() => {
+      setIsRefreshing(false);
+      if (Platform.OS === "ios") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    }, 1000);
+  }, []);
 
   const startEditingExpense = (expense: Expense) => {
     if (!canEditExpense(expense.id)) {
@@ -386,6 +511,38 @@ export default function TripDetailsScreen() {
     }
   };
 
+  const handleCreateGroup = async (name: string) => {
+    await createGroup(tripId, name);
+  };
+
+  const handleUpdateGroup = async (name: string) => {
+    if (!editingGroupId) return;
+    await updateGroup(editingGroupId, name);
+  };
+
+  const handleDeleteGroup = async (groupId: string) => {
+    await deleteGroup(groupId);
+  };
+
+  const handleRemoveMemberFromGroup = async (memberId: string) => {
+    await removeMemberFromGroup(tripId, memberId);
+  };
+
+  const openCreateGroupModal = () => {
+    setEditingGroupId(null);
+    setShowGroupEditor(true);
+  };
+
+  const openEditGroupModal = (groupId: string) => {
+    setEditingGroupId(groupId);
+    setShowGroupEditor(true);
+  };
+
+  const ungroupedMembers = useMemo(
+    () => activeMembers.filter((member) => !member.groupId),
+    [activeMembers]
+  );
+
   const runCompleteTrip = async () => {
     if (!mayCompleteTrip) {
       return;
@@ -395,6 +552,9 @@ export default function TripDetailsScreen() {
 
     try {
       await completeTrip(trip.id);
+      if (Platform.OS === "ios") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
     } finally {
       setIsCompletingTrip(false);
     }
@@ -405,6 +565,9 @@ export default function TripDetailsScreen() {
 
     try {
       await markSettlementTransferPaid(transferId);
+      if (Platform.OS === "ios") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
     } finally {
       setActiveTransferId(null);
     }
@@ -415,22 +578,67 @@ export default function TripDetailsScreen() {
 
     try {
       await confirmSettlementTransferReceived(transferId);
+      if (Platform.OS === "ios") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
     } finally {
       setActiveTransferId(null);
     }
   };
 
+  const getPaymentLinkForTransfer = (transfer: TripSettlementTransfer) => {
+    if (!trip) return null;
+
+    // For group transfers, find any member of the group with a payment method
+    if (transfer.toEntity.type === 'group') {
+      const toEntity = transfer.toEntity;
+      const groupMembers = trip.members.filter((m) => m.groupId === toEntity.groupId);
+      for (const member of groupMembers) {
+        if (!member.userId) continue;
+        const pm = paymentMethods[member.userId];
+        if (pm?.type && pm?.handle) {
+          const note = `${trip.name} settlement`;
+          return buildPaymentLink(pm.type, pm.handle, transfer.amount, note);
+        }
+      }
+      return null;
+    }
+
+    // For member transfers
+    const toEntity = transfer.toEntity;
+    if (toEntity.type !== 'member') return null;
+    const recipient = trip.members.find((m) => m.id === toEntity.memberId);
+    if (!recipient?.userId) return null;
+    const pm = paymentMethods[recipient.userId];
+    if (!pm?.type || !pm?.handle) return null;
+    const note = `${trip.name} settlement`;
+    return buildPaymentLink(pm.type, pm.handle, transfer.amount, note);
+  };
+
   const renderPersistedTransferActions = (transfer: TripSettlementTransfer) => {
     if (canMarkSettlementTransferPaid(transfer.id)) {
+      const payLink = getPaymentLinkForTransfer(transfer);
+
       return (
-        <AppButton
-          onPress={() => markTransferPaid(transfer.id)}
-          variant="secondary"
-          fullWidth={false}
-          disabled={activeTransferId === transfer.id}
-        >
-          {activeTransferId === transfer.id ? "Saving..." : "Mark paid"}
-        </AppButton>
+        <View style={{ gap: theme.spacing.sm }}>
+          {payLink ? (
+            <AppButton
+              onPress={async () => { await Linking.openURL(payLink.url); }}
+              variant="primary"
+              fullWidth={false}
+            >
+              {payLink.label}
+            </AppButton>
+          ) : null}
+          <AppButton
+            onPress={() => markTransferPaid(transfer.id)}
+            variant="secondary"
+            fullWidth={false}
+            disabled={activeTransferId === transfer.id}
+          >
+            {activeTransferId === transfer.id ? "Saving..." : "Mark paid"}
+          </AppButton>
+        </View>
       );
     }
 
@@ -518,7 +726,11 @@ export default function TripDetailsScreen() {
   };
 
   return (
-    <AppScreen maxWidth={1200}>
+    <AppScreen maxWidth={1200} refreshControl={
+      Platform.OS !== "web" ? (
+        <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
+      ) : undefined
+    }>
       <View style={[styles.layout, wide ? styles.layoutWide : null]}>
         <View style={styles.primaryColumn}>
           <SurfaceCard tone="hero" style={styles.summaryCard}>
@@ -562,9 +774,9 @@ export default function TripDetailsScreen() {
           </SurfaceCard>
 
           <SectionCard
-            title={editingExpenseId ? "Edit expense" : "Add expense"}
-            collapsible
-            initiallyOpen={!!editingExpenseId}
+              title={editingExpenseId ? "Edit expense" : "Add expense"}
+              collapsible
+              initiallyOpen={!!editingExpenseId}
             description={
               isTripActive
                 ? editingExpenseId
@@ -586,13 +798,12 @@ export default function TripDetailsScreen() {
               keyboardType="decimal-pad"
               editable={isTripActive}
             />
-            <AppInput
+            <DatePicker
               label="Expense date"
               value={expenseDate}
-              onChangeText={setExpenseDate}
-              placeholder="2026-06-10"
-              helperText="Use YYYY-MM-DD."
-              editable={isTripActive}
+              onChange={setExpenseDate}
+              disabled={!isTripActive}
+              maximumDate={new Date()}
             />
             <CurrencyPicker
               label="Original currency"
@@ -658,6 +869,15 @@ export default function TripDetailsScreen() {
                 Involved members
               </AppText>
               <View style={styles.chipWrap}>
+                {groups.map((group) => (
+                  <Chip
+                    key={`group-${group.id}`}
+                    label={`${group.name} (${group.memberIds.length})`}
+                    selected={isGroupSelected(group.id)}
+                    onPress={isTripActive ? () => toggleGroup(group.id) : undefined}
+                    tone="success"
+                  />
+                ))}
                 {expenseFormMembers.map((member) => {
                   const selected = selectedMembers.includes(member.id);
 
@@ -701,94 +921,84 @@ export default function TripDetailsScreen() {
             badge={`${expenses.length} expense${expenses.length !== 1 ? "s" : ""}`}
             description="Every expense keeps the original amount and the converted trip value."
           >
-            {expenses.length ? (
-              expenses.map((expense) => (
-                <View key={expense.id} style={[styles.rowCard, compact ? styles.rowCardCompact : null]}>
-                  <View style={styles.rowCopy}>
-                    <AppText variant="bodySm" color="secondary" style={styles.rowTitle}>
-                      {expense.note || expense.category}
-                    </AppText>
-                    <AppText variant="bodySm" color="muted">
-                      {formatCurrency(expense.amount, expense.currencyCode)} {"->"}{" "}
-                      {fmt(expense.tripAmount)}
-                    </AppText>
-                    <AppText variant="bodySm" color="muted">
-                      On {expense.expenseDate}
-                    </AppText>
-                    <AppText variant="bodySm" color="muted">
-                      Added by{" "}
-                      {trip.members.find((member) => member.userId === expense.createdByUserId)?.displayName ?? "Unknown"}
-                    </AppText>
-                  </View>
-                  <View style={[styles.expenseMeta, compact ? styles.expenseMetaCompact : null]}>
-                    <AppText variant="bodySm" color="muted">
-                      {expense.involvedMemberIds.length} people
-                    </AppText>
-                    {canEditExpense(expense.id) ? (
-                      <View style={[styles.expenseActions, compact ? styles.expenseActionsCompact : null]}>
-                        <AppButton onPress={() => startEditingExpense(expense)} variant="secondary" fullWidth={false}>
-                          Edit
-                        </AppButton>
-                        <AppButton onPress={() => removeExpense(expense.id)} variant="secondary" fullWidth={false}>
-                          Delete
-                        </AppButton>
-                      </View>
-                    ) : (
-                      <AppText variant="bodySm" color="muted">
-                        {trip.status === "active" ? "View only" : "Locked after completion"}
+              {expenses.length ? (
+                expenses.map((expense) => (
+                  <View key={expense.id} style={[styles.rowCard, compact ? styles.rowCardCompact : null]}>
+                    <View style={styles.rowCopy}>
+                      <AppText variant="bodySm" color="secondary" style={styles.rowTitle}>
+                        {expense.note || expense.category}
                       </AppText>
-                    )}
+                      <AppText variant="bodySm" color="muted">
+                        {formatCurrency(expense.amount, expense.currencyCode)} {"->"}{" "}
+                        {fmt(expense.tripAmount)}
+                      </AppText>
+                      <AppText variant="bodySm" color="muted">
+                        On {expense.expenseDate}
+                      </AppText>
+                      <AppText variant="bodySm" color="muted">
+                        Added by{" "}
+                        {trip.members.find((member) => member.userId === expense.createdByUserId)?.displayName ?? "Unknown"}
+                      </AppText>
+                    </View>
+                    <View style={[styles.expenseMeta, compact ? styles.expenseMetaCompact : null]}>
+                      <AppText variant="bodySm" color="muted">
+                        Split between:{" "}
+                        {expense.involvedMemberIds
+                          .map((id) => trip.members.find((m) => m.id === id)?.displayName ?? "Unknown")
+                          .join(", ")}
+                      </AppText>
+                      {canEditExpense(expense.id) ? (
+                        <View style={[styles.expenseActions, compact ? styles.expenseActionsCompact : null]}>
+                          <AppButton onPress={() => startEditingExpense(expense)} variant="secondary" fullWidth={false}>
+                            Edit
+                          </AppButton>
+                          <AppButton onPress={() => removeExpense(expense.id)} variant="secondary" fullWidth={false}>
+                            Delete
+                          </AppButton>
+                        </View>
+                      ) : (
+                        <AppText variant="bodySm" color="muted">
+                          {trip.status === "active" ? "View only" : "Locked after completion"}
+                        </AppText>
+                      )}
+                    </View>
                   </View>
-                </View>
-              ))
-            ) : (
-              <AppText variant="bodySm" color="muted">
-                No expenses yet. Add the first one above to start balancing the trip.
-              </AppText>
-            )}
+                ))
+              ) : (
+                <AppText variant="bodySm" color="muted">
+                  No expenses yet. Add the first one above to start balancing the trip.
+                </AppText>
+              )}
           </SectionCard>
         </View>
 
         <View style={styles.secondaryColumn}>
           <SectionCard title="Balances" collapsible description="Positive values are owed back. Negative values still owe the group.">
             {settlement?.balances.map((balance) => {
-              const member = trip.members.find((item) => item.id === balance.memberId);
+              const key = balance.entity.type === 'group'
+                ? `g:${balance.entity.groupId}`
+                : `m:${balance.entity.memberId}`;
 
               return (
-                <View key={balance.memberId} style={[styles.rowCard, compact ? styles.rowCardCompact : null]}>
-                  <View style={styles.rowCopy}>
-                    <AppText variant="bodySm" color="secondary" style={styles.rowTitle}>
-                      {member?.displayName ?? balance.memberId}
-                    </AppText>
-                    <AppText variant="bodySm" color="muted">
-                      Paid {fmt(balance.paid)} · Owes{" "}
-                      {fmt(balance.owed)}
-                    </AppText>
-                  </View>
-                  <AppText
-                    variant="bodySm"
-                    color={balance.net < 0 ? "danger" : balance.net > 0 ? "success" : "muted"}
-                    style={styles.netAmount}
-                  >
-                    {fmt(balance.net)}
-                  </AppText>
-                </View>
+                <ExpandableBalance
+                  key={key}
+                  balance={balance}
+                  formatAmount={fmt}
+                  compact={compact}
+                />
               );
             })}
           </SectionCard>
 
           {trip.status === "active" ? (
-            <SectionCard title="Repayments" collapsible description="SplitTrip minimizes the number of transfers needed to settle up.">
+            <SectionCard title="Repayments" description="SplitTrip minimizes the number of transfers needed to settle up.">
               {settlement?.transfers.length ? (
-                settlement.transfers.map((transfer) => {
-                  const from = trip.members.find((member) => member.id === transfer.fromMemberId);
-                  const to = trip.members.find((member) => member.id === transfer.toMemberId);
-
+                settlement.transfers.map((transfer, index) => {
                   return (
-                    <View key={`${transfer.fromMemberId}-${transfer.toMemberId}`} style={[styles.rowCard, compact ? styles.rowCardCompact : null]}>
+                    <View key={`transfer-${index}`} style={[styles.rowCard, compact ? styles.rowCardCompact : null]}>
                       <View style={styles.rowCopy}>
                         <AppText variant="bodySm" color="secondary" style={styles.rowTitle}>
-                          {from?.displayName} pays {to?.displayName}
+                          {transfer.fromDisplayName} <AppText variant="bodySm" color="muted">{" >> "}</AppText>{fmt(transfer.amount)}<AppText variant="bodySm" color="muted">{" >> "}</AppText> {transfer.toDisplayName}
                         </AppText>
                       </View>
                       <AppText variant="bodySm" color="primary" style={styles.netAmount}>
@@ -804,17 +1014,14 @@ export default function TripDetailsScreen() {
               )}
             </SectionCard>
           ) : (
-            <SectionCard title="Final payments" collapsible description="These transfers were saved when the trip was completed.">
+            <SectionCard title="Final payments" description="These transfers were saved when the trip was completed.">
               {persistedTransfers.length ? (
                 persistedTransfers.map((transfer) => {
-                  const from = trip.members.find((member) => member.id === transfer.fromMemberId);
-                  const to = trip.members.find((member) => member.id === transfer.toMemberId);
-
                   return (
                     <View key={transfer.id} style={[styles.rowCard, compact ? styles.rowCardCompact : null]}>
                       <View style={styles.rowCopy}>
                         <AppText variant="bodySm" color="secondary" style={styles.rowTitle}>
-                          {from?.displayName} pays {to?.displayName}
+                          {transfer.fromDisplayName} <AppText variant="bodySm" color="muted">{" >> "}</AppText>{fmt(transfer.amount)}<AppText variant="bodySm" color="muted">{" >> "}</AppText> {transfer.toDisplayName}
                         </AppText>
                         <AppText variant="bodySm" color="muted">
                           Status: {transfer.status}
@@ -839,9 +1046,6 @@ export default function TripDetailsScreen() {
 
           <SectionCard
             title="Members"
-            collapsible
-            initiallyOpen={false}
-            badge={`${activeMembers.length} member${activeMembers.length !== 1 ? "s" : ""}`}
             description={
               mayManageTrip
                 ? isTripActive
@@ -878,10 +1082,92 @@ export default function TripDetailsScreen() {
                 ) : null}
               </View>
             ) : null}
+
+            {mayManageTrip && isTripActive && groups.length === 0 && (
+              <View style={styles.group}>
+                <AppText variant="bodySm" color="muted">
+                  Create groups to combine members for settlement (e.g., families or couples)
+                </AppText>
+                <AppButton onPress={openCreateGroupModal} variant="secondary">
+                  Create first group
+                </AppButton>
+              </View>
+            )}
+
+            {groups.length > 0 && (
+              <View style={styles.membersGroup}>
+                <View style={styles.membersHeaderRow}>
+                  <AppText variant="meta" color="muted">
+                    Groups
+                  </AppText>
+                  <AppText variant="bodySm" color="muted">
+                    {groups.length} {groups.length === 1 ? "group" : "groups"}
+                  </AppText>
+                </View>
+                {mayManageTrip && isTripActive && (
+                  <AppButton onPress={openCreateGroupModal} variant="secondary" fullWidth={false}>
+                    Create group
+                  </AppButton>
+                )}
+                <View style={styles.memberList}>
+                  {groups.map((group) => (
+                    <GroupCard
+                      key={group.id}
+                      group={group}
+                      members={trip.members}
+                      canEdit={mayManageTrip && isTripActive}
+                      onEdit={() => openEditGroupModal(group.id)}
+                      onDelete={() => handleDeleteGroup(group.id)}
+                      onRemoveMember={handleRemoveMemberFromGroup}
+                      compact={compact}
+                    />
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {ungroupedMembers.length > 0 && (
+              <View style={styles.membersGroup}>
+                <View style={styles.membersHeaderRow}>
+                  <AppText variant="meta" color="muted">
+                    Ungrouped members
+                  </AppText>
+                  <AppText variant="bodySm" color="muted">
+                    {ungroupedMembers.length} {ungroupedMembers.length === 1 ? "member" : "members"}
+                  </AppText>
+                </View>
+                <View style={styles.memberList}>
+                  {ungroupedMembers.map((member) => (
+                    <SurfaceCard key={member.id}>
+                      <View style={styles.ungroupedMemberRow}>
+                        <AppText variant="bodySm" color="secondary">
+                          {member.displayName}
+                        </AppText>
+                        {mayManageTrip && isTripActive && groups.length > 0 && (
+                          <View style={styles.chipWrap}>
+                            {groups.map((group) => (
+                              <AppButton
+                                key={group.id}
+                                onPress={() => addMemberToGroup(tripId, member.id, group.id)}
+                                variant="secondary"
+                                fullWidth={false}
+                              >
+                                Add to {group.name}
+                              </AppButton>
+                            ))}
+                          </View>
+                        )}
+                      </View>
+                    </SurfaceCard>
+                  ))}
+                </View>
+              </View>
+            )}
+
             <View style={styles.membersGroup}>
               <View style={styles.membersHeaderRow}>
                 <AppText variant="meta" color="muted">
-                  Current members
+                  All members
                 </AppText>
                 <AppText variant="bodySm" color="muted">
                   {activeMembers.length} active
@@ -962,37 +1248,61 @@ export default function TripDetailsScreen() {
                 })}
               </View>
             </View>
-            {removedMembers.length ? (
+            {removedMembersWithBalances.length > 0 ? (
               <View style={styles.membersGroup}>
-                <View style={styles.membersHeaderRow}>
-                  <AppText variant="meta" color="muted">
-                    Removed members
-                  </AppText>
+                <Pressable
+                  style={styles.membersHeaderRow}
+                  onPress={() => setShowRemovedMembers(!showRemovedMembers)}
+                >
+                  <View style={styles.collapsibleHeader}>
+                    <AppText variant="bodySm" color="muted" style={styles.expandIcon}>
+                      {showRemovedMembers ? "▼" : "▶"}
+                    </AppText>
+                    <AppText variant="meta" color="muted">
+                      Removed members with balances
+                    </AppText>
+                  </View>
                   <AppText variant="bodySm" color="muted">
-                    {removedMembers.length} archived
+                    {removedMembersWithBalances.length} {removedMembersWithBalances.length === 1 ? "member" : "members"}
                   </AppText>
-                </View>
-                <View style={styles.memberList}>
-                  {removedMembers.map((member) => (
-                    <SurfaceCard key={member.id} tone="muted" style={styles.memberCard}>
-                      <View style={styles.memberIdentity}>
-                        <View style={[styles.memberAvatar, styles.memberAvatarRemoved]}>
-                          <AppText variant="bodySm" color="inverse" style={styles.memberAvatarText}>
-                            {getMemberInitials(member.displayName)}
-                          </AppText>
-                        </View>
-                        <View style={styles.memberCopy}>
-                          <AppText variant="body" color="secondary" style={styles.memberName}>
-                            {member.displayName}
-                          </AppText>
-                          <AppText variant="bodySm" color="muted">
-                            {getMemberStatusText(member)}
-                          </AppText>
-                        </View>
-                      </View>
-                    </SurfaceCard>
-                  ))}
-                </View>
+                </Pressable>
+                {showRemovedMembers && (
+                  <View style={styles.memberList}>
+                    {removedMembersWithBalances.map((member) => {
+                      const balance = settlement?.balances.find((b) =>
+                        b.entity.type === 'member' && b.entity.memberId === member.id
+                      );
+
+                      return (
+                        <SurfaceCard key={member.id} tone="muted" style={styles.memberCard}>
+                          <View style={styles.memberIdentity}>
+                            <View style={[styles.memberAvatar, styles.memberAvatarRemoved]}>
+                              <AppText variant="bodySm" color="inverse" style={styles.memberAvatarText}>
+                                {getMemberInitials(member.displayName)}
+                              </AppText>
+                            </View>
+                            <View style={styles.memberCopy}>
+                              <AppText variant="body" color="secondary" style={styles.memberName}>
+                                {member.displayName}
+                              </AppText>
+                              <AppText variant="bodySm" color="muted">
+                                {getMemberStatusText(member)}
+                              </AppText>
+                              {balance && (
+                                <AppText
+                                  variant="bodySm"
+                                  color={balance.net < 0 ? "danger" : balance.net > 0 ? "success" : "muted"}
+                                >
+                                  Balance: {fmt(balance.net)}
+                                </AppText>
+                              )}
+                            </View>
+                          </View>
+                        </SurfaceCard>
+                      );
+                    })}
+                  </View>
+                )}
               </View>
             ) : null}
             {mayManageTrip ? (
@@ -1025,6 +1335,17 @@ export default function TripDetailsScreen() {
           </SectionCard>
         </View>
       </View>
+
+      <GroupEditor
+        visible={showGroupEditor}
+        title={editingGroupId ? "Edit group" : "Create group"}
+        initialName={editingGroupId ? groups.find((g) => g.id === editingGroupId)?.name ?? "" : ""}
+        onClose={() => {
+          setShowGroupEditor(false);
+          setEditingGroupId(null);
+        }}
+        onSave={editingGroupId ? handleUpdateGroup : handleCreateGroup}
+      />
     </AppScreen>
   );
 }
@@ -1052,6 +1373,9 @@ function createStyles(theme: Theme) {
   group: {
     gap: theme.spacing.sm
   },
+  expensesList: {
+    gap: theme.spacing.sm
+  },
   chipWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1066,8 +1390,25 @@ function createStyles(theme: Theme) {
     alignItems: "center",
     gap: theme.spacing.md
   },
+  collapsibleHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing.xs
+  },
+  expandIcon: {
+    width: 16
+  },
   memberList: {
     gap: theme.spacing.sm
+  },
+  ungroupedMemberRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: theme.spacing.md,
+    padding: theme.spacing.md,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.colors.surface.base
   },
   memberCard: {
     gap: theme.spacing.md

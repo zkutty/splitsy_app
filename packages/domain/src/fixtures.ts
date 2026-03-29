@@ -20,7 +20,8 @@ export const SAMPLE_TRIP: Trip = {
     { id: "mia", userId: SAMPLE_USER.id, email: SAMPLE_USER.email, displayName: "Mia", isLinked: true, status: "active" },
     { id: "leo", email: "leo@example.com", displayName: "Leo", isLinked: false, status: "active" },
     { id: "zoe", email: "zoe@example.com", displayName: "Zoe", isLinked: false, status: "active" }
-  ]
+  ],
+  groups: []
 };
 
 export const SAMPLE_EXPENSES: Expense[] = [

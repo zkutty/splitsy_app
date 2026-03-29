@@ -1,4 +1,4 @@
-import type { Expense, ExpenseDraft, SettlementTransfer, Trip, TripSettlementTransfer, UserProfile } from "@splitsy/domain";
+import type { Expense, ExpenseDraft, MemberGroup, PaymentMethodType, SettlementTransfer, Trip, TripSettlementTransfer, UserProfile } from "@splitsy/domain";
 import { SAMPLE_EXPENSES, SAMPLE_TRIP, SAMPLE_USER } from "@splitsy/domain";
 
 import { createSupabaseClient, hasSupabaseConfig } from "./supabase";
@@ -35,6 +35,14 @@ export type TripsRepository = {
   }) => Promise<Trip>;
   addTripMember: (tripId: string, member: UserProfile) => Promise<Trip>;
   removeTripMember: (tripId: string, memberId: string) => Promise<Trip>;
+  updatePaymentMethod: (type: PaymentMethodType | null, handle: string | null) => Promise<void>;
+  getPaymentMethod: () => Promise<{ type: PaymentMethodType | null; handle: string | null }>;
+  getPaymentMethodForUser: (userId: string) => Promise<{ type: PaymentMethodType | null; handle: string | null }>;
+  createGroup: (tripId: string, name: string) => Promise<MemberGroup>;
+  updateGroup: (groupId: string, name: string) => Promise<MemberGroup>;
+  deleteGroup: (groupId: string) => Promise<void>;
+  addMemberToGroup: (memberId: string, groupId: string) => Promise<void>;
+  removeMemberFromGroup: (memberId: string) => Promise<void>;
 };
 
 const demoRepository = (): TripsRepository => {
@@ -42,6 +50,8 @@ const demoRepository = (): TripsRepository => {
   let expenses = [...SAMPLE_EXPENSES];
   let settlementTransfers: TripSettlementTransfer[] = [];
   const invites = new Map<string, string>();
+  let demoPaymentMethod: { type: PaymentMethodType | null; handle: string | null } = { type: null, handle: null };
+  let groups: MemberGroup[] = [];
 
   return {
     ensureProfile: async () => undefined,
@@ -250,6 +260,7 @@ const demoRepository = (): TripsRepository => {
         tripCurrencyCode: input.tripCurrencyCode,
         startDate: input.startDate ?? null,
         endDate: input.endDate ?? null,
+        groups: [],
         members: [
           {
             id: input.owner.id,
@@ -320,6 +331,137 @@ const demoRepository = (): TripsRepository => {
       }
 
       return updatedTrip;
+    },
+    updatePaymentMethod: async (type, handle) => {
+      demoPaymentMethod = { type, handle };
+    },
+    getPaymentMethod: async () => demoPaymentMethod,
+    getPaymentMethodForUser: async () => demoPaymentMethod,
+    createGroup: async (tripId, name) => {
+      const existingGroup = groups.find(
+        (g) => g.name.toLowerCase() === name.toLowerCase() &&
+        trips.find((t) => t.id === tripId && t.groups.some((tg) => tg.id === g.id))
+      );
+
+      if (existingGroup) {
+        throw new Error("A group with this name already exists in this trip.");
+      }
+
+      const newGroup: MemberGroup = {
+        id: `group_${Date.now()}`,
+        name,
+        memberIds: []
+      };
+
+      groups = [...groups, newGroup];
+
+      trips = trips.map((trip) =>
+        trip.id === tripId
+          ? {
+              ...trip,
+              groups: [...(trip.groups || []), newGroup]
+            }
+          : trip
+      );
+
+      return newGroup;
+    },
+    updateGroup: async (groupId, name) => {
+      const group = groups.find((g) => g.id === groupId);
+
+      if (!group) {
+        throw new Error("Group not found");
+      }
+
+      const updatedGroup = { ...group, name };
+
+      groups = groups.map((g) => (g.id === groupId ? updatedGroup : g));
+
+      trips = trips.map((trip) => ({
+        ...trip,
+        groups: (trip.groups || []).map((g) => (g.id === groupId ? updatedGroup : g))
+      }));
+
+      return updatedGroup;
+    },
+    deleteGroup: async (groupId) => {
+      groups = groups.filter((g) => g.id !== groupId);
+
+      trips = trips.map((trip) => ({
+        ...trip,
+        groups: (trip.groups || []).filter((g) => g.id !== groupId),
+        members: trip.members.map((member) =>
+          member.groupId === groupId
+            ? { ...member, groupId: null }
+            : member
+        )
+      }));
+    },
+    addMemberToGroup: async (memberId, groupId) => {
+      trips = trips.map((trip) => ({
+        ...trip,
+        members: trip.members.map((member) =>
+          member.id === memberId
+            ? { ...member, groupId }
+            : member
+        )
+      }));
+
+      groups = groups.map((group) =>
+        group.id === groupId
+          ? {
+              ...group,
+              memberIds: [...group.memberIds.filter((id) => id !== memberId), memberId]
+            }
+          : {
+              ...group,
+              memberIds: group.memberIds.filter((id) => id !== memberId)
+            }
+      );
+
+      trips = trips.map((trip) => ({
+        ...trip,
+        groups: (trip.groups || []).map((group) =>
+          group.id === groupId
+            ? {
+                ...group,
+                memberIds: trip.members
+                  .filter((m) => m.groupId === groupId)
+                  .map((m) => m.id)
+              }
+            : {
+                ...group,
+                memberIds: trip.members
+                  .filter((m) => m.groupId === group.id)
+                  .map((m) => m.id)
+              }
+        )
+      }));
+    },
+    removeMemberFromGroup: async (memberId) => {
+      trips = trips.map((trip) => ({
+        ...trip,
+        members: trip.members.map((member) =>
+          member.id === memberId
+            ? { ...member, groupId: null }
+            : member
+        )
+      }));
+
+      groups = groups.map((group) => ({
+        ...group,
+        memberIds: group.memberIds.filter((id) => id !== memberId)
+      }));
+
+      trips = trips.map((trip) => ({
+        ...trip,
+        groups: (trip.groups || []).map((group) => ({
+          ...group,
+          memberIds: trip.members
+            .filter((m) => m.groupId === group.id)
+            .map((m) => m.id)
+        }))
+      }));
     }
   };
 };
@@ -352,19 +494,14 @@ const supabaseRepository = (): TripsRepository => {
     return user.id;
   };
 
-  const mapTrip = (row: any): Trip => ({
-    id: row.id,
-    createdByUserId: row.created_by_user_id,
-    status: row.status ?? "active",
-    name: row.name,
-    destination: row.destination,
-    tripCurrencyCode: row.trip_currency_code,
-    startDate: row.start_date,
-    endDate: row.end_date,
-    completedAt: row.completed_at ?? null,
-    completedByUserId: row.completed_by_user_id ?? null,
-    settledAt: row.settled_at ?? null,
-    members: (row.trip_members ?? []).map((memberRow: any) => ({
+  const mapTrip = (row: any): Trip => {
+    const tripGroups = (row.trip_groups ?? []).map((groupRow: any) => ({
+      id: groupRow.id,
+      name: groupRow.name,
+      memberIds: [] as string[]
+    }));
+
+    const members = (row.trip_members ?? []).map((memberRow: any) => ({
       id: memberRow.id,
       userId: memberRow.user_id ?? null,
       email: memberRow.email ?? null,
@@ -373,15 +510,39 @@ const supabaseRepository = (): TripsRepository => {
       claimedAt: memberRow.claimed_at ?? null,
       isLinked: Boolean(memberRow.user_id),
       status: memberRow.status ?? "active",
-      removedAt: memberRow.removed_at ?? null
-    }))
-  });
+      removedAt: memberRow.removed_at ?? null,
+      groupId: memberRow.group_id ?? null
+    }));
+
+    // Populate memberIds for each group
+    for (const group of tripGroups) {
+      group.memberIds = members
+        .filter((m: typeof members[number]) => m.groupId === group.id)
+        .map((m: typeof members[number]) => m.id);
+    }
+
+    return {
+      id: row.id,
+      createdByUserId: row.created_by_user_id,
+      status: row.status ?? "active",
+      name: row.name,
+      destination: row.destination,
+      tripCurrencyCode: row.trip_currency_code,
+      startDate: row.start_date,
+      endDate: row.end_date,
+      completedAt: row.completed_at ?? null,
+      completedByUserId: row.completed_by_user_id ?? null,
+      settledAt: row.settled_at ?? null,
+      members,
+      groups: tripGroups
+    };
+  };
 
   const fetchTrip = async (tripId: string) => {
     const { data, error } = await supabase
       .from("trips")
       .select(
-        "id, created_by_user_id, status, name, destination, trip_currency_code, start_date, end_date, completed_at, completed_by_user_id, settled_at, trip_members(id, user_id, display_name, avatar_url, email, claimed_at, status, removed_at)"
+        "id, created_by_user_id, status, name, destination, trip_currency_code, start_date, end_date, completed_at, completed_by_user_id, settled_at, trip_members(id, user_id, display_name, avatar_url, email, claimed_at, status, removed_at, group_id), trip_groups(id, name)"
       )
       .eq("id", tripId)
       .single();
@@ -393,20 +554,32 @@ const supabaseRepository = (): TripsRepository => {
     return mapTrip(data);
   };
 
-  const mapSettlementTransfer = (row: any): TripSettlementTransfer => ({
-    id: row.id,
-    tripId: row.trip_id,
-    fromMemberId: row.from_member_id,
-    toMemberId: row.to_member_id,
-    amount: Number(row.amount),
-    currencyCode: row.currency_code,
-    status: row.status,
-    paidMarkedAt: row.paid_marked_at ?? null,
-    paidMarkedByUserId: row.paid_marked_by_user_id ?? null,
-    confirmedAt: row.confirmed_at ?? null,
-    confirmedByUserId: row.confirmed_by_user_id ?? null,
-    createdAt: row.created_at
-  });
+  const mapSettlementTransfer = (row: any): TripSettlementTransfer => {
+    const fromEntity = row.from_member_id
+      ? { type: 'member' as const, memberId: row.from_member_id }
+      : { type: 'group' as const, groupId: row.from_group_id };
+
+    const toEntity = row.to_member_id
+      ? { type: 'member' as const, memberId: row.to_member_id }
+      : { type: 'group' as const, groupId: row.to_group_id };
+
+    return {
+      id: row.id,
+      tripId: row.trip_id,
+      fromEntity,
+      toEntity,
+      amount: Number(row.amount),
+      currencyCode: row.currency_code,
+      fromDisplayName: row.from_display_name ?? 'Unknown',
+      toDisplayName: row.to_display_name ?? 'Unknown',
+      status: row.status,
+      paidMarkedAt: row.paid_marked_at ?? null,
+      paidMarkedByUserId: row.paid_marked_by_user_id ?? null,
+      confirmedAt: row.confirmed_at ?? null,
+      confirmedByUserId: row.confirmed_by_user_id ?? null,
+      createdAt: row.created_at
+    };
+  };
 
   return {
     ensureProfile: async (profile) => {
@@ -459,7 +632,7 @@ const supabaseRepository = (): TripsRepository => {
       const { data, error } = await supabase
         .from("trips")
         .select(
-          "id, created_by_user_id, status, name, destination, trip_currency_code, start_date, end_date, completed_at, completed_by_user_id, settled_at, trip_members(id, user_id, display_name, avatar_url, email, claimed_at, status, removed_at)"
+          "id, created_by_user_id, status, name, destination, trip_currency_code, start_date, end_date, completed_at, completed_by_user_id, settled_at, trip_members(id, user_id, display_name, avatar_url, email, claimed_at, status, removed_at, group_id), trip_groups(id, name)"
         )
         .order("start_date", { ascending: false });
 
@@ -502,7 +675,7 @@ const supabaseRepository = (): TripsRepository => {
       const { data, error } = await supabase
         .from("trip_settlement_transfers")
         .select(
-          "id, trip_id, from_member_id, to_member_id, amount, currency_code, status, paid_marked_at, paid_marked_by_user_id, confirmed_at, confirmed_by_user_id, created_at"
+          "id, trip_id, from_member_id, from_group_id, to_member_id, to_group_id, amount, currency_code, status, paid_marked_at, paid_marked_by_user_id, confirmed_at, confirmed_by_user_id, created_at"
         )
         .eq("trip_id", tripId)
         .order("created_at", { ascending: true });
@@ -511,7 +684,35 @@ const supabaseRepository = (): TripsRepository => {
         throw error;
       }
 
-      return (data ?? []).map(mapSettlementTransfer);
+      // Need to fetch display names for entities
+      const trip = await fetchTrip(tripId);
+
+      return (data ?? []).map((row: any) => {
+        let fromDisplayName = 'Unknown';
+        let toDisplayName = 'Unknown';
+
+        if (row.from_member_id) {
+          const member = trip.members.find((m) => m.id === row.from_member_id);
+          fromDisplayName = member?.displayName ?? 'Unknown';
+        } else if (row.from_group_id) {
+          const group = trip.groups.find((g) => g.id === row.from_group_id);
+          fromDisplayName = group?.name ?? 'Unknown Group';
+        }
+
+        if (row.to_member_id) {
+          const member = trip.members.find((m) => m.id === row.to_member_id);
+          toDisplayName = member?.displayName ?? 'Unknown';
+        } else if (row.to_group_id) {
+          const group = trip.groups.find((g) => g.id === row.to_group_id);
+          toDisplayName = group?.name ?? 'Unknown Group';
+        }
+
+        return mapSettlementTransfer({
+          ...row,
+          from_display_name: fromDisplayName,
+          to_display_name: toDisplayName
+        });
+      });
     },
     createExpense: async (tripId, draft) => {
       const createdByUserId = await getCurrentUserId();
@@ -636,8 +837,8 @@ const supabaseRepository = (): TripsRepository => {
       const { data: completedTrip, error: completeError } = await supabase.rpc("complete_trip", {
         target_trip_id: tripId,
         settlement_transfers: transfers.map((transfer) => ({
-          fromMemberId: transfer.fromMemberId,
-          toMemberId: transfer.toMemberId,
+          fromEntity: transfer.fromEntity,
+          toEntity: transfer.toEntity,
           amount: transfer.amount,
           currencyCode: transfer.currencyCode
         }))
@@ -647,33 +848,50 @@ const supabaseRepository = (): TripsRepository => {
         throw completeError;
       }
 
-      const { data: tripMembers, error: membersError } = await supabase
-        .from("trip_members")
-        .select("id, user_id, display_name, avatar_url, email, claimed_at, status, removed_at")
-        .eq("trip_id", tripId);
+      const trip = await fetchTrip(tripId);
 
-      if (membersError) {
-        throw membersError;
-      }
-
-      const persistedTransfers = await supabase
+      const { data: transfersData, error: transfersError } = await supabase
         .from("trip_settlement_transfers")
         .select(
-          "id, trip_id, from_member_id, to_member_id, amount, currency_code, status, paid_marked_at, paid_marked_by_user_id, confirmed_at, confirmed_by_user_id, created_at"
+          "id, trip_id, from_member_id, from_group_id, to_member_id, to_group_id, amount, currency_code, status, paid_marked_at, paid_marked_by_user_id, confirmed_at, confirmed_by_user_id, created_at"
         )
         .eq("trip_id", tripId)
         .order("created_at", { ascending: true });
 
-      if (persistedTransfers.error) {
-        throw persistedTransfers.error;
+      if (transfersError) {
+        throw transfersError;
       }
 
+      const persistedTransfers = (transfersData ?? []).map((row: any) => {
+        let fromDisplayName = 'Unknown';
+        let toDisplayName = 'Unknown';
+
+        if (row.from_member_id) {
+          const member = trip.members.find((m) => m.id === row.from_member_id);
+          fromDisplayName = member?.displayName ?? 'Unknown';
+        } else if (row.from_group_id) {
+          const group = trip.groups.find((g) => g.id === row.from_group_id);
+          fromDisplayName = group?.name ?? 'Unknown Group';
+        }
+
+        if (row.to_member_id) {
+          const member = trip.members.find((m) => m.id === row.to_member_id);
+          toDisplayName = member?.displayName ?? 'Unknown';
+        } else if (row.to_group_id) {
+          const group = trip.groups.find((g) => g.id === row.to_group_id);
+          toDisplayName = group?.name ?? 'Unknown Group';
+        }
+
+        return mapSettlementTransfer({
+          ...row,
+          from_display_name: fromDisplayName,
+          to_display_name: toDisplayName
+        });
+      });
+
       return {
-        trip: mapTrip({
-          ...completedTrip,
-          trip_members: tripMembers ?? []
-        }),
-        transfers: (persistedTransfers.data ?? []).map(mapSettlementTransfer)
+        trip,
+        transfers: persistedTransfers
       };
     },
     markSettlementTransferPaid: async (transferId) => {
@@ -825,6 +1043,132 @@ const supabaseRepository = (): TripsRepository => {
       }
 
       return fetchTrip(tripId);
+    },
+    updatePaymentMethod: async (type, handle) => {
+      const userId = await getCurrentUserId();
+      const { error } = await supabase
+        .from("users")
+        .update({
+          payment_method_type: type,
+          payment_method_handle: handle
+        })
+        .eq("id", userId);
+
+      if (error) {
+        throw error;
+      }
+    },
+    getPaymentMethod: async () => {
+      const userId = await getCurrentUserId();
+      const { data, error } = await supabase
+        .from("users")
+        .select("payment_method_type, payment_method_handle")
+        .eq("id", userId)
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      return {
+        type: (data?.payment_method_type as PaymentMethodType | null) ?? null,
+        handle: (data?.payment_method_handle as string | null) ?? null
+      };
+    },
+    getPaymentMethodForUser: async (userId) => {
+      const { data, error } = await supabase
+        .from("users")
+        .select("payment_method_type, payment_method_handle")
+        .eq("id", userId)
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      return {
+        type: (data?.payment_method_type as PaymentMethodType | null) ?? null,
+        handle: (data?.payment_method_handle as string | null) ?? null
+      };
+    },
+    createGroup: async (tripId, name) => {
+      const userId = await getCurrentUserId();
+      const { data, error } = await supabase
+        .from("trip_groups")
+        .insert({
+          trip_id: tripId,
+          name,
+          created_by_user_id: userId
+        })
+        .select("id, name")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      return {
+        id: data.id,
+        name: data.name,
+        memberIds: []
+      };
+    },
+    updateGroup: async (groupId, name) => {
+      const { data, error } = await supabase
+        .from("trip_groups")
+        .update({ name })
+        .eq("id", groupId)
+        .select("id, name, trip_id")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      const { data: members, error: membersError } = await supabase
+        .from("trip_members")
+        .select("id")
+        .eq("group_id", groupId);
+
+      if (membersError) {
+        throw membersError;
+      }
+
+      return {
+        id: data.id,
+        name: data.name,
+        memberIds: (members ?? []).map((m: any) => m.id)
+      };
+    },
+    deleteGroup: async (groupId) => {
+      const { error } = await supabase
+        .from("trip_groups")
+        .delete()
+        .eq("id", groupId);
+
+      if (error) {
+        throw error;
+      }
+    },
+    addMemberToGroup: async (memberId, groupId) => {
+      const { error } = await supabase
+        .from("trip_members")
+        .update({ group_id: groupId })
+        .eq("id", memberId);
+
+      if (error) {
+        throw error;
+      }
+    },
+    removeMemberFromGroup: async (memberId) => {
+      const { error } = await supabase
+        .from("trip_members")
+        .update({ group_id: null })
+        .eq("id", memberId);
+
+      if (error) {
+        throw error;
+      }
     }
   };
 };

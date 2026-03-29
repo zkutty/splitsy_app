@@ -1,4 +1,4 @@
-import type { Expense, Trip, TripSettlementTransfer, UserProfile } from "@splitsy/domain";
+import type { Expense, MemberGroup, PaymentMethodType, Trip, TripSettlementTransfer, UserProfile } from "@splitsy/domain";
 import { settleTrip } from "@splitsy/domain";
 import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useState } from "react";
 import { AppState, Platform } from "react-native";
@@ -38,6 +38,16 @@ type TripsContextValue = {
   addExpense: (tripId: string, draft: AddExpenseInput) => Promise<void>;
   updateExpense: (expenseId: string, tripId: string, draft: AddExpenseInput) => Promise<void>;
   deleteExpense: (expenseId: string) => Promise<void>;
+  updatePaymentMethod: (type: PaymentMethodType | null, handle: string | null) => Promise<void>;
+  getPaymentMethod: () => Promise<{ type: PaymentMethodType | null; handle: string | null }>;
+  getPaymentMethodForUser: (userId: string) => Promise<{ type: PaymentMethodType | null; handle: string | null }>;
+  createGroup: (tripId: string, name: string) => Promise<void>;
+  updateGroup: (groupId: string, name: string) => Promise<void>;
+  deleteGroup: (groupId: string) => Promise<void>;
+  addMemberToGroup: (tripId: string, memberId: string, groupId: string) => Promise<void>;
+  removeMemberFromGroup: (tripId: string, memberId: string) => Promise<void>;
+  getGroupsForTrip: (tripId: string) => MemberGroup[];
+  getMemberGroup: (tripId: string, memberId: string) => MemberGroup | undefined;
 };
 
 const TRIPS_CONTEXT_KEY = "__splittrip_trips_context__";
@@ -272,7 +282,8 @@ export function TripsProvider({ children }: PropsWithChildren) {
 
         const transferSnapshot = settleTrip(
           expenses.filter((expense) => expense.tripId === tripId),
-          trip.members.map((member) => member.id),
+          trip.members,
+          trip.groups || [],
           trip.tripCurrencyCode
         ).transfers;
         const result = await repository.completeTrip(tripId, transferSnapshot);
@@ -294,9 +305,27 @@ export function TripsProvider({ children }: PropsWithChildren) {
       canMarkSettlementTransferPaid: (transferId) => {
         const transfer = settlementTransfers.find((item) => item.id === transferId);
         const trip = transfer ? trips.find((item) => item.id === transfer.tripId) : null;
-        const member = transfer ? trip?.members.find((item) => item.id === transfer.fromMemberId) : null;
 
-        return transfer?.status === "pending" && trip?.status === "completed" && member?.userId === currentUser.id;
+        if (!transfer || !trip || transfer.status !== "pending" || trip.status !== "completed") {
+          return false;
+        }
+
+        // For member transfers
+        if (transfer.fromEntity.type === 'member') {
+          const fromEntity = transfer.fromEntity;
+          const member = trip.members.find((item) => item.id === fromEntity.memberId);
+          return member?.userId === currentUser.id;
+        }
+
+        // For group transfers - any member of the group can mark paid
+        if (transfer.fromEntity.type === 'group') {
+          const fromEntity = transfer.fromEntity;
+          return trip.members.some(
+            (member) => member.groupId === fromEntity.groupId && member.userId === currentUser.id
+          );
+        }
+
+        return false;
       },
       markSettlementTransferPaid: async (transferId) => {
         const updatedTransfer = await repository.markSettlementTransferPaid(transferId);
@@ -308,9 +337,27 @@ export function TripsProvider({ children }: PropsWithChildren) {
       canConfirmSettlementTransferReceived: (transferId) => {
         const transfer = settlementTransfers.find((item) => item.id === transferId);
         const trip = transfer ? trips.find((item) => item.id === transfer.tripId) : null;
-        const member = transfer ? trip?.members.find((item) => item.id === transfer.toMemberId) : null;
 
-        return transfer?.status === "paid" && trip?.status === "completed" && member?.userId === currentUser.id;
+        if (!transfer || !trip || transfer.status !== "paid" || trip.status !== "completed") {
+          return false;
+        }
+
+        // For member transfers
+        if (transfer.toEntity.type === 'member') {
+          const toEntity = transfer.toEntity;
+          const member = trip.members.find((item) => item.id === toEntity.memberId);
+          return member?.userId === currentUser.id;
+        }
+
+        // For group transfers - any member of the group can confirm
+        if (transfer.toEntity.type === 'group') {
+          const toEntity = transfer.toEntity;
+          return trip.members.some(
+            (member) => member.groupId === toEntity.groupId && member.userId === currentUser.id
+          );
+        }
+
+        return false;
       },
       confirmSettlementTransferReceived: async (transferId) => {
         const updatedTransfer = await repository.confirmSettlementTransferReceived(transferId);
@@ -344,6 +391,122 @@ export function TripsProvider({ children }: PropsWithChildren) {
       deleteExpense: async (expenseId) => {
         await repository.deleteExpense(expenseId);
         setExpenses((current) => current.filter((item) => item.id !== expenseId));
+      },
+      updatePaymentMethod: async (type, handle) => {
+        await repository.updatePaymentMethod(type, handle);
+      },
+      getPaymentMethod: async () => {
+        return repository.getPaymentMethod();
+      },
+      getPaymentMethodForUser: async (userId) => {
+        return repository.getPaymentMethodForUser(userId);
+      },
+      createGroup: async (tripId, name) => {
+        const newGroup = await repository.createGroup(tripId, name);
+
+        setTrips((current) =>
+          current.map((trip) =>
+            trip.id === tripId
+              ? {
+                  ...trip,
+                  groups: [...(trip.groups || []), newGroup]
+                }
+              : trip
+          )
+        );
+      },
+      updateGroup: async (groupId, name) => {
+        const updatedGroup = await repository.updateGroup(groupId, name);
+
+        setTrips((current) =>
+          current.map((trip) => ({
+            ...trip,
+            groups: (trip.groups || []).map((g) => (g.id === groupId ? updatedGroup : g))
+          }))
+        );
+      },
+      deleteGroup: async (groupId) => {
+        await repository.deleteGroup(groupId);
+
+        setTrips((current) =>
+          current.map((trip) => ({
+            ...trip,
+            groups: (trip.groups || []).filter((g) => g.id !== groupId),
+            members: trip.members.map((member) =>
+              member.groupId === groupId ? { ...member, groupId: null } : member
+            )
+          }))
+        );
+      },
+      addMemberToGroup: async (tripId, memberId, groupId) => {
+        await repository.addMemberToGroup(memberId, groupId);
+
+        setTrips((current) =>
+          current.map((trip) => {
+            if (trip.id !== tripId) {
+              return trip;
+            }
+
+            const updatedMembers = trip.members.map((member) =>
+              member.id === memberId ? { ...member, groupId } : member
+            );
+
+            const updatedGroups = (trip.groups || []).map((group) => ({
+              ...group,
+              memberIds: updatedMembers
+                .filter((m) => m.groupId === group.id)
+                .map((m) => m.id)
+            }));
+
+            return {
+              ...trip,
+              members: updatedMembers,
+              groups: updatedGroups
+            };
+          })
+        );
+      },
+      removeMemberFromGroup: async (tripId, memberId) => {
+        await repository.removeMemberFromGroup(memberId);
+
+        setTrips((current) =>
+          current.map((trip) => {
+            if (trip.id !== tripId) {
+              return trip;
+            }
+
+            const updatedMembers = trip.members.map((member) =>
+              member.id === memberId ? { ...member, groupId: null } : member
+            );
+
+            const updatedGroups = (trip.groups || []).map((group) => ({
+              ...group,
+              memberIds: updatedMembers
+                .filter((m) => m.groupId === group.id)
+                .map((m) => m.id)
+            }));
+
+            return {
+              ...trip,
+              members: updatedMembers,
+              groups: updatedGroups
+            };
+          })
+        );
+      },
+      getGroupsForTrip: (tripId) => {
+        const trip = trips.find((t) => t.id === tripId);
+        return trip?.groups || [];
+      },
+      getMemberGroup: (tripId, memberId) => {
+        const trip = trips.find((t) => t.id === tripId);
+        const member = trip?.members.find((m) => m.id === memberId);
+
+        if (!member?.groupId) {
+          return undefined;
+        }
+
+        return trip?.groups?.find((g) => g.id === member.groupId);
       }
     }),
     [currentUser, expenses, isLoading, repository, session.authMode, session.signOut, session.user, settlementTransfers, trips]
