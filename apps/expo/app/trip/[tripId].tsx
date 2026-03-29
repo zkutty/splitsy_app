@@ -2,7 +2,7 @@ import { Redirect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as Linking from "expo-linking";
 import * as Haptics from "expo-haptics";
-import { Platform, Pressable, RefreshControl, ScrollView, Share, StyleSheet, View, useWindowDimensions } from "react-native";
+import { Modal, Platform, Pressable, RefreshControl, ScrollView, Share, StyleSheet, View, useWindowDimensions } from "react-native";
 
 import { PRESET_CATEGORIES, settleTrip, validateExpenseDraft } from "@splitsy/domain";
 import type { Expense, ExpenseCategoryId, MemberGroup, PaymentMethodType, SplitMode, TripSettlementTransfer } from "@splitsy/domain";
@@ -98,6 +98,7 @@ export default function TripDetailsScreen() {
   const [memberPendingRemovalId, setMemberPendingRemovalId] = useState<string | null>(null);
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
   const [showGroupEditor, setShowGroupEditor] = useState(false);
+  const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [showRemovedMembers, setShowRemovedMembers] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -464,12 +465,8 @@ export default function TripDetailsScreen() {
       setSplitMode("equal");
       setSplitShares({});
       setEditingExpenseId(null);
+      setShowExpenseModal(false);
       setErrors([]);
-
-      // Close form on mobile after successful save
-      if (compact && !editingExpenseId) {
-        setShowExpenseForm(false);
-      }
 
       // Haptic feedback on iOS
       if (Platform.OS === "ios") {
@@ -496,6 +493,7 @@ export default function TripDetailsScreen() {
     }
 
     setEditingExpenseId(expense.id);
+    setShowExpenseModal(true);
     setAmount(String(expense.amount));
     setExpenseDate(expense.expenseDate);
     setCurrencyCode(expense.currencyCode);
@@ -517,6 +515,7 @@ export default function TripDetailsScreen() {
 
   const cancelEditingExpense = () => {
     setEditingExpenseId(null);
+    setShowExpenseModal(false);
     setAmount("");
     setExpenseDate(new Date().toISOString().slice(0, 10));
     setCurrencyCode(trip.tripCurrencyCode);
@@ -843,201 +842,11 @@ export default function TripDetailsScreen() {
             ) : null}
           </SurfaceCard>
 
-          <SectionCard
-              title={editingExpenseId ? "Edit expense" : "Add expense"}
-              collapsible
-              initiallyOpen={!!editingExpenseId}
-            description={
-              isTripActive
-                ? editingExpenseId
-                  ? "Only the person who added an expense can edit it."
-                  : "Any linked trip member can add expenses. Only the creator of an expense can edit or delete it."
-                : "This trip is completed, so expenses are now locked."
-            }
-          >
-            {!isTripActive ? (
-              <AppText variant="bodySm" color="muted">
-                Expense editing is unavailable after completion.
-              </AppText>
-            ) : null}
-            <AppInput
-              label="Amount"
-              value={amount}
-              onChangeText={setAmount}
-              placeholder="48.00"
-              keyboardType="decimal-pad"
-              editable={isTripActive}
-            />
-            <DatePicker
-              label="Expense date"
-              value={expenseDate}
-              onChange={setExpenseDate}
-              disabled={!isTripActive}
-              maximumDate={new Date()}
-            />
-            <CurrencyPicker
-              label="Original currency"
-              value={currencyCode}
-              onChange={setCurrencyCode}
-              disabled={!isTripActive}
-            />
-            <AppText variant="bodySm" color="muted">
-              Expense amounts are converted into {trip.tripCurrencyCode} using the rate for the expense date.
-            </AppText>
-            <AppInput
-              label="Note"
-              value={note}
-              onChangeText={setNote}
-              placeholder="Dinner by the river"
-              editable={isTripActive}
-            />
-
-            <View style={styles.group}>
-              <AppText variant="meta" color="muted">
-                Category
-              </AppText>
-              <View style={styles.chipWrap}>
-                {PRESET_CATEGORIES.map((item) => (
-                  <Chip
-                    key={item.id}
-                    label={item.label}
-                    selected={category === item.id}
-                    onPress={isTripActive ? () => setCategory(item.id) : undefined}
-                  />
-                ))}
-              </View>
-            </View>
-
-            {category === "custom" ? (
-              <AppInput
-                label="Custom category"
-                value={customCategory}
-                onChangeText={setCustomCategory}
-                placeholder="Tickets"
-                editable={isTripActive}
-              />
-            ) : null}
-
-            <View style={styles.group}>
-              <AppText variant="meta" color="muted">
-                Paid by
-              </AppText>
-              <View style={styles.chipWrap}>
-                {expenseFormMembers.map((member) => (
-                  <Chip
-                    key={member.id}
-                    label={member.displayName}
-                    selected={paidByMemberId === member.id}
-                    onPress={isTripActive ? () => setPaidByMemberId(member.id) : undefined}
-                  />
-                ))}
-              </View>
-            </View>
-
-            <View style={styles.group}>
-              <AppText variant="meta" color="muted">
-                Involved members
-              </AppText>
-              <View style={styles.chipWrap}>
-                {groups.map((group) => (
-                  <Chip
-                    key={`group-${group.id}`}
-                    label={`${group.name} (${group.memberIds.length})`}
-                    selected={isGroupSelected(group.id)}
-                    onPress={isTripActive ? () => toggleGroup(group.id) : undefined}
-                    tone="success"
-                  />
-                ))}
-                {expenseFormMembers.map((member) => {
-                  const selected = selectedMembers.includes(member.id);
-
-                  return (
-                    <Chip
-                      key={member.id}
-                      label={member.displayName}
-                      selected={selected}
-                      onPress={isTripActive ? () => toggleMember(member.id) : undefined}
-                    />
-                  );
-                })}
-              </View>
-            </View>
-
-            <View style={styles.group}>
-              <AppText variant="meta" color="muted">
-                Split mode
-              </AppText>
-              <View style={styles.chipWrap}>
-                <Chip
-                  label="Equal"
-                  selected={splitMode === "equal"}
-                  onPress={isTripActive ? () => { setSplitMode("equal"); setSplitShares({}); } : undefined}
-                />
-                <Chip
-                  label="By amount"
-                  selected={splitMode === "byAmount"}
-                  onPress={isTripActive ? () => setSplitMode("byAmount") : undefined}
-                />
-                <Chip
-                  label="By %"
-                  selected={splitMode === "byPercentage"}
-                  onPress={isTripActive ? () => setSplitMode("byPercentage") : undefined}
-                />
-              </View>
-            </View>
-
-            {splitMode !== "equal" && selectedMembers.length > 0 ? (
-              <View style={styles.group}>
-                <AppText variant="meta" color="muted">
-                  {splitMode === "byAmount" ? "Amount per person" : "Percentage per person"}
-                </AppText>
-                {selectedMembers.map((memberId) => {
-                  const member = expenseFormMembers.find((m) => m.id === memberId);
-                  if (!member) return null;
-
-                  return (
-                    <AppInput
-                      key={memberId}
-                      label={member.displayName}
-                      value={splitShares[memberId] ?? ""}
-                      onChangeText={(val) =>
-                        setSplitShares((prev) => ({ ...prev, [memberId]: val }))
-                      }
-                      placeholder={splitMode === "byAmount" ? "0.00" : "0"}
-                      keyboardType="decimal-pad"
-                      editable={isTripActive}
-                    />
-                  );
-                })}
-                <AppText variant="bodySm" color="muted">
-                  {splitMode === "byAmount"
-                    ? `Total: ${Object.values(splitShares).reduce((s, v) => s + (Number(v) || 0), 0).toFixed(2)} of ${amount || "0"}`
-                    : `Total: ${Object.values(splitShares).reduce((s, v) => s + (Number(v) || 0), 0).toFixed(1)}%`}
-                </AppText>
-              </View>
-            ) : null}
-
-            {errors.length > 0 ? (
-              <SurfaceCard tone="muted" style={styles.errorBox}>
-                {errors.map((error) => (
-                  <AppText key={error} variant="bodySm" color="danger">
-                    {error}
-                  </AppText>
-                ))}
-              </SurfaceCard>
-            ) : null}
-
-            <View style={[styles.actionRow, compact ? styles.actionRowCompact : null]}>
-              <AppButton onPress={submitExpense} disabled={isSavingExpense || !isTripActive}>
-                {isSavingExpense ? "Saving..." : editingExpenseId ? "Save changes" : "Save expense"}
-              </AppButton>
-              {editingExpenseId ? (
-                <AppButton onPress={cancelEditingExpense} variant="secondary">
-                  Cancel edit
-                </AppButton>
-              ) : null}
-            </View>
-          </SectionCard>
+          {isTripActive ? (
+            <AppButton onPress={() => setShowExpenseModal(true)} fullWidth={false}>
+              + Add expense
+            </AppButton>
+          ) : null}
 
           <SectionCard
             title="Expenses"
@@ -1511,6 +1320,205 @@ export default function TripDetailsScreen() {
         </View>
       </View>
 
+      <Modal
+        visible={showExpenseModal}
+        transparent
+        animationType="fade"
+        onRequestClose={cancelEditingExpense}
+      >
+        <Pressable style={styles.modalOverlay} onPress={cancelEditingExpense}>
+          <Pressable style={styles.modalContainer} onPress={(e) => e.stopPropagation()}>
+            <SurfaceCard style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <AppText variant="sectionTitle">
+                  {editingExpenseId ? "Edit expense" : "Add expense"}
+                </AppText>
+                <Pressable onPress={cancelEditingExpense} hitSlop={8}>
+                  <AppText variant="body" color="muted">✕</AppText>
+                </Pressable>
+              </View>
+              <ScrollView showsVerticalScrollIndicator={false} style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent}>
+                <AppInput
+                  label="Amount"
+                  value={amount}
+                  onChangeText={setAmount}
+                  placeholder="48.00"
+                  keyboardType="decimal-pad"
+                  editable={isTripActive}
+                />
+                <DatePicker
+                  label="Expense date"
+                  value={expenseDate}
+                  onChange={setExpenseDate}
+                  disabled={!isTripActive}
+                  maximumDate={new Date()}
+                />
+                <CurrencyPicker
+                  label="Original currency"
+                  value={currencyCode}
+                  onChange={setCurrencyCode}
+                  disabled={!isTripActive}
+                />
+                <AppText variant="bodySm" color="muted">
+                  Expense amounts are converted into {trip.tripCurrencyCode} using the rate for the expense date.
+                </AppText>
+                <AppInput
+                  label="Note"
+                  value={note}
+                  onChangeText={setNote}
+                  placeholder="Dinner by the river"
+                  editable={isTripActive}
+                />
+
+                <View style={styles.group}>
+                  <AppText variant="meta" color="muted">
+                    Category
+                  </AppText>
+                  <View style={styles.chipWrap}>
+                    {PRESET_CATEGORIES.map((item) => (
+                      <Chip
+                        key={item.id}
+                        label={item.label}
+                        selected={category === item.id}
+                        onPress={isTripActive ? () => setCategory(item.id) : undefined}
+                      />
+                    ))}
+                  </View>
+                </View>
+
+                {category === "custom" ? (
+                  <AppInput
+                    label="Custom category"
+                    value={customCategory}
+                    onChangeText={setCustomCategory}
+                    placeholder="Tickets"
+                    editable={isTripActive}
+                  />
+                ) : null}
+
+                <View style={styles.group}>
+                  <AppText variant="meta" color="muted">
+                    Paid by
+                  </AppText>
+                  <View style={styles.chipWrap}>
+                    {expenseFormMembers.map((member) => (
+                      <Chip
+                        key={member.id}
+                        label={member.displayName}
+                        selected={paidByMemberId === member.id}
+                        onPress={isTripActive ? () => setPaidByMemberId(member.id) : undefined}
+                      />
+                    ))}
+                  </View>
+                </View>
+
+                <View style={styles.group}>
+                  <AppText variant="meta" color="muted">
+                    Involved members
+                  </AppText>
+                  <View style={styles.chipWrap}>
+                    {groups.map((group) => (
+                      <Chip
+                        key={`group-${group.id}`}
+                        label={`${group.name} (${group.memberIds.length})`}
+                        selected={isGroupSelected(group.id)}
+                        onPress={isTripActive ? () => toggleGroup(group.id) : undefined}
+                        tone="success"
+                      />
+                    ))}
+                    {expenseFormMembers.map((member) => {
+                      const selected = selectedMembers.includes(member.id);
+
+                      return (
+                        <Chip
+                          key={member.id}
+                          label={member.displayName}
+                          selected={selected}
+                          onPress={isTripActive ? () => toggleMember(member.id) : undefined}
+                        />
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <View style={styles.group}>
+                  <AppText variant="meta" color="muted">
+                    Split mode
+                  </AppText>
+                  <View style={styles.chipWrap}>
+                    <Chip
+                      label="Equal"
+                      selected={splitMode === "equal"}
+                      onPress={isTripActive ? () => { setSplitMode("equal"); setSplitShares({}); } : undefined}
+                    />
+                    <Chip
+                      label="By amount"
+                      selected={splitMode === "byAmount"}
+                      onPress={isTripActive ? () => setSplitMode("byAmount") : undefined}
+                    />
+                    <Chip
+                      label="By %"
+                      selected={splitMode === "byPercentage"}
+                      onPress={isTripActive ? () => setSplitMode("byPercentage") : undefined}
+                    />
+                  </View>
+                </View>
+
+                {splitMode !== "equal" && selectedMembers.length > 0 ? (
+                  <View style={styles.group}>
+                    <AppText variant="meta" color="muted">
+                      {splitMode === "byAmount" ? "Amount per person" : "Percentage per person"}
+                    </AppText>
+                    {selectedMembers.map((memberId) => {
+                      const member = expenseFormMembers.find((m) => m.id === memberId);
+                      if (!member) return null;
+
+                      return (
+                        <AppInput
+                          key={memberId}
+                          label={member.displayName}
+                          value={splitShares[memberId] ?? ""}
+                          onChangeText={(val) =>
+                            setSplitShares((prev) => ({ ...prev, [memberId]: val }))
+                          }
+                          placeholder={splitMode === "byAmount" ? "0.00" : "0"}
+                          keyboardType="decimal-pad"
+                          editable={isTripActive}
+                        />
+                      );
+                    })}
+                    <AppText variant="bodySm" color="muted">
+                      {splitMode === "byAmount"
+                        ? `Total: ${Object.values(splitShares).reduce((s, v) => s + (Number(v) || 0), 0).toFixed(2)} of ${amount || "0"}`
+                        : `Total: ${Object.values(splitShares).reduce((s, v) => s + (Number(v) || 0), 0).toFixed(1)}%`}
+                    </AppText>
+                  </View>
+                ) : null}
+
+                {errors.length > 0 ? (
+                  <SurfaceCard tone="muted" style={styles.errorBox}>
+                    {errors.map((error) => (
+                      <AppText key={error} variant="bodySm" color="danger">
+                        {error}
+                      </AppText>
+                    ))}
+                  </SurfaceCard>
+                ) : null}
+
+                <View style={[styles.actionRow, compact ? styles.actionRowCompact : null]}>
+                  <AppButton onPress={submitExpense} disabled={isSavingExpense || !isTripActive}>
+                    {isSavingExpense ? "Saving..." : editingExpenseId ? "Save changes" : "Save expense"}
+                  </AppButton>
+                  <AppButton onPress={cancelEditingExpense} variant="secondary">
+                    Cancel
+                  </AppButton>
+                </View>
+              </ScrollView>
+            </SurfaceCard>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <GroupEditor
         visible={showGroupEditor}
         title={editingGroupId ? "Edit group" : "Create group"}
@@ -1686,6 +1694,35 @@ function createStyles(theme: Theme, compact: boolean) {
   expenseActionsCompact: {
     flexWrap: "wrap",
     justifyContent: "flex-start"
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: theme.spacing.lg
+  },
+  modalContainer: {
+    width: "100%",
+    maxWidth: 560,
+    maxHeight: "90%"
+  },
+  modalCard: {
+    maxHeight: "100%",
+    gap: theme.spacing.md
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: theme.spacing.sm
+  },
+  modalScroll: {
+    flexShrink: 1
+  },
+  modalScrollContent: {
+    gap: compact ? theme.spacing.sm : theme.spacing.md,
+    paddingBottom: theme.spacing.sm
   }
   });
 }
