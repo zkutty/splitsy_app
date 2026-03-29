@@ -1,22 +1,95 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { StyleSheet, View, useWindowDimensions } from "react-native";
+
+import type { PaymentMethodType } from "@splitsy/domain";
 
 import { useSession } from "../../src/providers/session-provider";
 import { useTrips } from "../../src/providers/trips-provider";
+import { getPaymentMethodLabel } from "../../src/lib/payment-links";
 import { AppScreen } from "../../src/ui/layout/AppScreen";
 import { AppButton } from "../../src/ui/primitives/AppButton";
+import { AppInput } from "../../src/ui/primitives/AppInput";
 import { Chip } from "../../src/ui/primitives/Chip";
 import { AppText } from "../../src/ui/primitives/AppText";
 import { SurfaceCard } from "../../src/ui/primitives/SurfaceCard";
 import { Theme, themeOptions, useAppTheme } from "../../src/ui/theme";
 
+const PAYMENT_METHODS: { id: PaymentMethodType; placeholder: string }[] = [
+  { id: "venmo", placeholder: "@username" },
+  { id: "paypal", placeholder: "username or PayPal.me link" },
+  { id: "cashapp", placeholder: "$cashtag" },
+];
+
 export default function AccountScreen() {
   const session = useSession();
-  const { currentUser, signOut } = useTrips();
+  const { currentUser, signOut, getPaymentMethod, updatePaymentMethod } = useTrips();
   const { theme, themeName, setThemeName } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { width } = useWindowDimensions();
   const compact = width < 520;
+
+  const [paymentType, setPaymentType] = useState<PaymentMethodType | null>(null);
+  const [paymentHandle, setPaymentHandle] = useState("");
+  const [isSavingPayment, setIsSavingPayment] = useState(false);
+  const [paymentSaved, setPaymentSaved] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [paymentLoaded, setPaymentLoaded] = useState(false);
+
+  useEffect(() => {
+    if (paymentLoaded) return;
+
+    getPaymentMethod()
+      .then(({ type, handle }) => {
+        setPaymentType(type);
+        setPaymentHandle(handle ?? "");
+        setPaymentLoaded(true);
+      })
+      .catch(() => {
+        setPaymentLoaded(true);
+      });
+  }, [getPaymentMethod, paymentLoaded]);
+
+  const handleSavePayment = async () => {
+    setPaymentError(null);
+    setPaymentSaved(false);
+
+    if (paymentType && !paymentHandle.trim()) {
+      setPaymentError("Please enter your payment handle.");
+      return;
+    }
+
+    setIsSavingPayment(true);
+
+    try {
+      const type = paymentHandle.trim() ? paymentType : null;
+      const handle = paymentHandle.trim() || null;
+      await updatePaymentMethod(type, handle);
+      setPaymentSaved(true);
+    } catch {
+      setPaymentError("Failed to save payment method. Please try again.");
+    } finally {
+      setIsSavingPayment(false);
+    }
+  };
+
+  const handleClearPayment = async () => {
+    setPaymentError(null);
+    setPaymentSaved(false);
+    setIsSavingPayment(true);
+
+    try {
+      await updatePaymentMethod(null, null);
+      setPaymentType(null);
+      setPaymentHandle("");
+      setPaymentSaved(true);
+    } catch {
+      setPaymentError("Failed to clear payment method.");
+    } finally {
+      setIsSavingPayment(false);
+    }
+  };
+
+  const selectedMethod = PAYMENT_METHODS.find((m) => m.id === paymentType);
 
   return (
     <AppScreen maxWidth={880} showHeaderMenu>
@@ -46,6 +119,61 @@ export default function AccountScreen() {
           <AppText variant="bodySm" color="muted">
             {currentUser.email ?? "No email available"}
           </AppText>
+        </View>
+      </SurfaceCard>
+
+      <SurfaceCard style={styles.paymentCard}>
+        <AppText variant="sectionTitle">Payment method</AppText>
+        <AppText variant="bodySm" color="muted">
+          Set your preferred payment app so trip members can pay you directly when settling up.
+        </AppText>
+        <View style={styles.paymentChips}>
+          {PAYMENT_METHODS.map((method) => (
+            <Chip
+              key={method.id}
+              label={getPaymentMethodLabel(method.id)}
+              selected={paymentType === method.id}
+              onPress={() => {
+                setPaymentSaved(false);
+                setPaymentError(null);
+                setPaymentType(paymentType === method.id ? null : method.id);
+              }}
+            />
+          ))}
+        </View>
+        {paymentType ? (
+          <AppInput
+            label={`${getPaymentMethodLabel(paymentType)} handle`}
+            placeholder={selectedMethod?.placeholder}
+            value={paymentHandle}
+            onChangeText={(text) => {
+              setPaymentHandle(text);
+              setPaymentSaved(false);
+              setPaymentError(null);
+            }}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+        ) : null}
+        {paymentError ? (
+          <AppText variant="bodySm" color="danger">
+            {paymentError}
+          </AppText>
+        ) : null}
+        {paymentSaved ? (
+          <AppText variant="bodySm" color="success">
+            Payment method saved.
+          </AppText>
+        ) : null}
+        <View style={styles.paymentActions}>
+          <AppButton onPress={handleSavePayment} disabled={isSavingPayment}>
+            {isSavingPayment ? "Saving..." : "Save payment method"}
+          </AppButton>
+          {paymentType || paymentHandle ? (
+            <AppButton onPress={handleClearPayment} variant="secondary" disabled={isSavingPayment}>
+              Clear
+            </AppButton>
+          ) : null}
         </View>
       </SurfaceCard>
 
@@ -125,6 +253,17 @@ function createStyles(theme: Theme) {
   },
   profileCopy: {
     gap: theme.spacing.xxs
+  },
+  paymentCard: {
+    gap: theme.spacing.md
+  },
+  paymentChips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: theme.spacing.sm
+  },
+  paymentActions: {
+    gap: theme.spacing.sm
   },
   infoGrid: {
     gap: theme.spacing.md
