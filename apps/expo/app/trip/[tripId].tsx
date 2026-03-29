@@ -1,7 +1,8 @@
 import { Redirect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as Linking from "expo-linking";
-import { Platform, Pressable, Share, StyleSheet, View, useWindowDimensions } from "react-native";
+import * as Haptics from "expo-haptics";
+import { Platform, Pressable, RefreshControl, ScrollView, Share, StyleSheet, View, useWindowDimensions } from "react-native";
 
 import { PRESET_CATEGORIES, settleTrip, validateExpenseDraft } from "@splitsy/domain";
 import type { Expense, MemberGroup, PaymentMethodType, TripSettlementTransfer } from "@splitsy/domain";
@@ -93,6 +94,9 @@ export default function TripDetailsScreen() {
   const [showGroupEditor, setShowGroupEditor] = useState(false);
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [showRemovedMembers, setShowRemovedMembers] = useState(false);
+  const [showExpenses, setShowExpenses] = useState(true);
+  const [showExpenseForm, setShowExpenseForm] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Payment method cache: maps userId -> { type, handle }
   const [paymentMethods, setPaymentMethods] = useState<
@@ -398,10 +402,30 @@ export default function TripDetailsScreen() {
       setCustomCategory("");
       setEditingExpenseId(null);
       setErrors([]);
+
+      // Close form on mobile after successful save
+      if (compact && !editingExpenseId) {
+        setShowExpenseForm(false);
+      }
+
+      // Haptic feedback on iOS
+      if (Platform.OS === "ios") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
     } finally {
       setIsSavingExpense(false);
     }
   };
+
+  const onRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    setTimeout(() => {
+      setIsRefreshing(false);
+      if (Platform.OS === "ios") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    }, 1000);
+  }, []);
 
   const startEditingExpense = (expense: Expense) => {
     if (!canEditExpense(expense.id)) {
@@ -517,6 +541,9 @@ export default function TripDetailsScreen() {
 
     try {
       await completeTrip(trip.id);
+      if (Platform.OS === "ios") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
     } finally {
       setIsCompletingTrip(false);
     }
@@ -527,6 +554,9 @@ export default function TripDetailsScreen() {
 
     try {
       await markSettlementTransferPaid(transferId);
+      if (Platform.OS === "ios") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
     } finally {
       setActiveTransferId(null);
     }
@@ -537,6 +567,9 @@ export default function TripDetailsScreen() {
 
     try {
       await confirmSettlementTransferReceived(transferId);
+      if (Platform.OS === "ios") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
     } finally {
       setActiveTransferId(null);
     }
@@ -679,7 +712,11 @@ export default function TripDetailsScreen() {
   };
 
   return (
-    <AppScreen maxWidth={1200}>
+    <AppScreen maxWidth={1200} refreshControl={
+      Platform.OS !== "web" ? (
+        <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
+      ) : undefined
+    }>
       <View style={[styles.layout, wide ? styles.layoutWide : null]}>
         <View style={styles.primaryColumn}>
           <SurfaceCard tone="hero" style={styles.summaryCard}>
@@ -722,8 +759,22 @@ export default function TripDetailsScreen() {
             ) : null}
           </SurfaceCard>
 
-          <SectionCard
-            title={editingExpenseId ? "Edit expense" : "Add expense"}
+          {compact && isTripActive && (
+            <View style={styles.quickActions}>
+              <AppButton onPress={() => setShowExpenseForm(!showExpenseForm)} variant="primary">
+                {showExpenseForm ? "Hide form" : "+ Add expense"}
+              </AppButton>
+              {mayCompleteTrip && (
+                <AppButton onPress={runCompleteTrip} variant="secondary" disabled={isCompletingTrip}>
+                  {isCompletingTrip ? "Completing..." : "Complete trip"}
+                </AppButton>
+              )}
+            </View>
+          )}
+
+          {(!compact || showExpenseForm || editingExpenseId) && (
+            <SectionCard
+              title={editingExpenseId ? "Edit expense" : "Add expense"}
             description={
               isTripActive
                 ? editingExpenseId
@@ -862,57 +913,75 @@ export default function TripDetailsScreen() {
               ) : null}
             </View>
           </SectionCard>
+          )}
 
-          <SectionCard
-            title="Expenses"
-            description="Every expense keeps the original amount and the converted trip value."
-          >
-            {expenses.length ? (
-              expenses.map((expense) => (
-                <View key={expense.id} style={[styles.rowCard, compact ? styles.rowCardCompact : null]}>
-                  <View style={styles.rowCopy}>
-                    <AppText variant="bodySm" color="secondary" style={styles.rowTitle}>
-                      {expense.note || expense.category}
-                    </AppText>
-                    <AppText variant="bodySm" color="muted">
-                      {formatCurrency(expense.amount, expense.currencyCode)} {"->"}{" "}
-                      {fmt(expense.tripAmount)}
-                    </AppText>
-                    <AppText variant="bodySm" color="muted">
-                      On {expense.expenseDate}
-                    </AppText>
-                    <AppText variant="bodySm" color="muted">
-                      Added by{" "}
-                      {trip.members.find((member) => member.userId === expense.createdByUserId)?.displayName ?? "Unknown"}
-                    </AppText>
-                  </View>
-                  <View style={[styles.expenseMeta, compact ? styles.expenseMetaCompact : null]}>
-                    <AppText variant="bodySm" color="muted">
-                      {expense.involvedMemberIds.length} people
-                    </AppText>
-                    {canEditExpense(expense.id) ? (
-                      <View style={[styles.expenseActions, compact ? styles.expenseActionsCompact : null]}>
-                        <AppButton onPress={() => startEditingExpense(expense)} variant="secondary" fullWidth={false}>
-                          Edit
-                        </AppButton>
-                        <AppButton onPress={() => removeExpense(expense.id)} variant="secondary" fullWidth={false}>
-                          Delete
-                        </AppButton>
-                      </View>
-                    ) : (
-                      <AppText variant="bodySm" color="muted">
-                        {trip.status === "active" ? "View only" : "Locked after completion"}
-                      </AppText>
-                    )}
-                  </View>
+          <Pressable onPress={() => compact && setShowExpenses(!showExpenses)}>
+            <SectionCard
+              title="Expenses"
+              description="Every expense keeps the original amount and the converted trip value."
+            >
+              {compact && (
+                <View style={styles.collapsibleHeader}>
+                  <AppText variant="bodySm" color="muted" style={styles.expandIcon}>
+                    {showExpenses ? "▼" : "▶"}
+                  </AppText>
+                  <AppText variant="bodySm" color="muted">
+                    {expenses.length} {expenses.length === 1 ? "expense" : "expenses"}
+                  </AppText>
                 </View>
-              ))
-            ) : (
-              <AppText variant="bodySm" color="muted">
-                No expenses yet. Add the first one above to start balancing the trip.
-              </AppText>
-            )}
-          </SectionCard>
+              )}
+            </SectionCard>
+          </Pressable>
+
+          {(!compact || showExpenses) && (
+            <SurfaceCard>
+              {expenses.length ? (
+                expenses.map((expense) => (
+                  <View key={expense.id} style={[styles.rowCard, compact ? styles.rowCardCompact : null]}>
+                    <View style={styles.rowCopy}>
+                      <AppText variant="bodySm" color="secondary" style={styles.rowTitle}>
+                        {expense.note || expense.category}
+                      </AppText>
+                      <AppText variant="bodySm" color="muted">
+                        {formatCurrency(expense.amount, expense.currencyCode)} {"->"}{" "}
+                        {fmt(expense.tripAmount)}
+                      </AppText>
+                      <AppText variant="bodySm" color="muted">
+                        On {expense.expenseDate}
+                      </AppText>
+                      <AppText variant="bodySm" color="muted">
+                        Added by{" "}
+                        {trip.members.find((member) => member.userId === expense.createdByUserId)?.displayName ?? "Unknown"}
+                      </AppText>
+                    </View>
+                    <View style={[styles.expenseMeta, compact ? styles.expenseMetaCompact : null]}>
+                      <AppText variant="bodySm" color="muted">
+                        {expense.involvedMemberIds.length} people
+                      </AppText>
+                      {canEditExpense(expense.id) ? (
+                        <View style={[styles.expenseActions, compact ? styles.expenseActionsCompact : null]}>
+                          <AppButton onPress={() => startEditingExpense(expense)} variant="secondary" fullWidth={false}>
+                            Edit
+                          </AppButton>
+                          <AppButton onPress={() => removeExpense(expense.id)} variant="secondary" fullWidth={false}>
+                            Delete
+                          </AppButton>
+                        </View>
+                      ) : (
+                        <AppText variant="bodySm" color="muted">
+                          {trip.status === "active" ? "View only" : "Locked after completion"}
+                        </AppText>
+                      )}
+                    </View>
+                  </View>
+                ))
+              ) : (
+                <AppText variant="bodySm" color="muted">
+                  No expenses yet. Add the first one above to start balancing the trip.
+                </AppText>
+              )}
+            </SurfaceCard>
+          )}
         </View>
 
         <View style={styles.secondaryColumn}>
@@ -1314,6 +1383,13 @@ function createStyles(theme: Theme) {
     gap: theme.spacing.sm
   },
   group: {
+    gap: theme.spacing.sm
+  },
+  quickActions: {
+    flexDirection: "row",
+    gap: theme.spacing.sm
+  },
+  expensesList: {
     gap: theme.spacing.sm
   },
   chipWrap: {
