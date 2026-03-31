@@ -120,7 +120,12 @@ export function TripsProvider({ children }: PropsWithChildren) {
   };
 
   useEffect(() => {
-    if (session.isLoading || !session.isAuthenticated) {
+    if (session.isLoading) {
+      // Keep isLoading=true while session hydrates so pages don't flash "not found"
+      return;
+    }
+
+    if (!session.isAuthenticated) {
       setTrips([]);
       setExpenses([]);
       setSettlementTransfers([]);

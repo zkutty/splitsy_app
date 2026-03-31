@@ -1,4 +1,4 @@
-import { Redirect, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as Linking from "expo-linking";
 import * as Clipboard from "expo-clipboard";
@@ -36,6 +36,7 @@ import { Theme, useAppTheme } from "../../src/ui/theme";
 export default function TripDetailsScreen() {
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
   const session = useSession();
+  const router = useRouter();
   const {
     getTripById,
     getCurrentMemberForTrip,
@@ -336,9 +337,12 @@ export default function TripDetailsScreen() {
     });
   }, [activeMembers, paidByMemberId]);
 
-  if (!session.isLoading && !session.isAuthenticated) {
-    return <Redirect href="/sign-in" />;
-  }
+  useEffect(() => {
+    if (!session.isLoading && !session.isAuthenticated) {
+      session.setPendingPostAuthPath(`/trip/${tripId}`);
+      router.replace("/sign-in");
+    }
+  }, [session.isLoading, session.isAuthenticated, tripId, router, session.setPendingPostAuthPath]);
 
   if (session.isLoading || isLoading) {
     return (
