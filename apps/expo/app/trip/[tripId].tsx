@@ -6,7 +6,7 @@ import * as Haptics from "expo-haptics";
 import { Modal, Platform, Pressable, RefreshControl, ScrollView, Share, StyleSheet, View, useWindowDimensions } from "react-native";
 
 import { PRESET_CATEGORIES, settleTrip, validateExpenseDraft } from "@splitsy/domain";
-import type { Expense, ExpenseCategoryId, MemberGroup, PaymentMethodType, SplitMode, TripSettlementTransfer } from "@splitsy/domain";
+import type { Expense, ExpenseCategoryId, MemberGroup, PaymentMethodType, SettlementTransfer, SplitMode, TripSettlement, TripSettlementTransfer } from "@splitsy/domain";
 
 import { formatCurrency } from "../../src/lib/format";
 import { buildPaymentLink, getPaymentMethodLabel } from "../../src/lib/payment-links";
@@ -29,6 +29,7 @@ import { GroupEditor } from "../../src/ui/primitives/GroupEditor";
 import { GroupMemberPicker } from "../../src/ui/primitives/GroupMemberPicker";
 import { ExpandableBalance } from "../../src/ui/primitives/ExpandableBalance";
 import { ActivityFeed } from "../../src/ui/primitives/ActivityFeed";
+import { SettleUpModal } from "../../src/ui/primitives/SettleUpModal";
 import { ExpenseFilters } from "../../src/ui/primitives/ExpenseFilters";
 import { ExpenseSummaryView } from "../../src/ui/primitives/ExpenseSummaryView";
 import { Theme, useAppTheme } from "../../src/ui/theme";
@@ -111,6 +112,7 @@ export default function TripDetailsScreen() {
   const [memberPickerGroupId, setMemberPickerGroupId] = useState<string | null>(null);
   const [showRemovedMembers, setShowRemovedMembers] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [settleUpTransfer, setSettleUpTransfer] = useState<SettlementTransfer | null>(null);
 
   // Filter and view state for expenses
   const [viewMode, setViewMode] = useState<'list' | 'summary'>('list');
@@ -914,7 +916,7 @@ export default function TripDetailsScreen() {
                   <View key={expense.id} style={[styles.rowCard, compact ? styles.rowCardCompact : null]}>
                     <View style={styles.rowCopy}>
                       <AppText variant="bodySm" color="secondary" style={styles.rowTitle}>
-                        {expense.note || expense.category}
+                        {expense.note || PRESET_CATEGORIES.find(c => c.id === expense.category)?.label || expense.category}
                       </AppText>
                       <AppText variant="bodySm" color="muted">
                         {formatCurrency(expense.amount, expense.currencyCode)} {"->"}{" "}
@@ -1005,9 +1007,14 @@ export default function TripDetailsScreen() {
                           {transfer.fromDisplayName} <AppText variant="bodySm" color="muted">{" >> "}</AppText>{fmt(transfer.amount)}<AppText variant="bodySm" color="muted">{" >> "}</AppText> {transfer.toDisplayName}
                         </AppText>
                       </View>
-                      <AppText variant="bodySm" color="primary" style={styles.netAmount}>
-                        {fmt(transfer.amount)}
-                      </AppText>
+                      <View style={[styles.expenseMeta, compact ? styles.expenseMetaCompact : null]}>
+                        <AppText variant="bodySm" color="primary" style={styles.netAmount}>
+                          {fmt(transfer.amount)}
+                        </AppText>
+                        <AppButton onPress={() => setSettleUpTransfer(transfer)} variant="secondary" fullWidth={false}>
+                          Log payment
+                        </AppButton>
+                      </View>
                     </View>
                   );
                 })
@@ -1399,7 +1406,7 @@ export default function TripDetailsScreen() {
                     Category
                   </AppText>
                   <View style={styles.chipWrap}>
-                    {PRESET_CATEGORIES.map((item) => (
+                    {PRESET_CATEGORIES.filter(c => c.id !== "settle_up").map((item) => (
                       <Chip
                         key={item.id}
                         label={item.label}
@@ -1565,6 +1572,20 @@ export default function TripDetailsScreen() {
         }}
         onSave={editingGroupId ? handleUpdateGroup : handleCreateGroup}
       />
+
+      {settleUpTransfer && settlement && (
+        <SettleUpModal
+          visible
+          transfer={settleUpTransfer}
+          tripId={trip.id}
+          tripCurrencyCode={trip.tripCurrencyCode}
+          members={activeMembers}
+          groups={groups}
+          settlement={settlement}
+          onClose={() => setSettleUpTransfer(null)}
+          onSubmit={addExpense}
+        />
+      )}
     </AppScreen>
   );
 }

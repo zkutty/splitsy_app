@@ -105,14 +105,16 @@ export function calculateSummary(
   members: Member[],
   currencyCode: string
 ): ExpenseSummary {
+  const billableExpenses = expenses.filter(e => e.category !== "settle_up");
+
   // Calculate total spend
-  const totalSpend = expenses.reduce((sum, e) => sum + e.tripAmount, 0);
+  const totalSpend = billableExpenses.reduce((sum, e) => sum + e.tripAmount, 0);
 
   // Group by category
   const categoryMap = new Map<ExpenseCategoryId, number>();
   const categoryCountMap = new Map<ExpenseCategoryId, number>();
 
-  expenses.forEach(expense => {
+  billableExpenses.forEach(expense => {
     const current = categoryMap.get(expense.category) ?? 0;
     categoryMap.set(expense.category, current + expense.tripAmount);
 
@@ -134,7 +136,7 @@ export function calculateSummary(
   // Calculate per-person totals
   const personMap = new Map<string, { paid: number; owed: number }>();
 
-  expenses.forEach(expense => {
+  billableExpenses.forEach(expense => {
     // Track paid
     const paidData = personMap.get(expense.paidByMemberId) ?? { paid: 0, owed: 0 };
     paidData.paid += expense.tripAmount;

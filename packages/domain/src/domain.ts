@@ -14,7 +14,8 @@ export type ExpenseCategoryId =
   | "nightlife"
   | "fees"
   | "misc"
-  | "custom";
+  | "custom"
+  | "settle_up";
 
 export type Member = {
   id: string;

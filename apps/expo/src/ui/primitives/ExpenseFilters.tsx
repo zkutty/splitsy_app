@@ -144,7 +144,7 @@ export function ExpenseFilters({
               Categories
             </AppText>
             <View style={styles.chipWrap}>
-              {PRESET_CATEGORIES.map((cat) => (
+              {PRESET_CATEGORIES.filter(c => c.id !== "settle_up").map((cat) => (
                 <Chip
                   key={cat.id}
                   label={cat.label}

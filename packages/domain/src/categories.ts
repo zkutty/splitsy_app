@@ -9,6 +9,7 @@ export const PRESET_CATEGORIES: ExpenseCategory[] = [
   { id: "nightlife", label: "Nightlife" },
   { id: "fees", label: "Fees" },
   { id: "misc", label: "Misc" },
-  { id: "custom", label: "Custom" }
+  { id: "custom", label: "Custom" },
+  { id: "settle_up", label: "Settle up" }
 ];
 
