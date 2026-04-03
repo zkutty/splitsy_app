@@ -10,7 +10,8 @@ import { BrandMark } from "./BrandMark";
 const LABELS: Record<string, string> = {
   home: "Home",
   trips: "Trips",
-  account: "Account"
+  account: "Account",
+  help: "Help"
 };
 
 type AppTabBarProps = any;

@@ -28,6 +28,7 @@ export default function AppLayout() {
       <Tabs.Screen name="home" options={{ title: "Home | SplitTrip" }} />
       <Tabs.Screen name="trips" options={{ title: "Trips | SplitTrip" }} />
       <Tabs.Screen name="account" options={{ title: "Account | SplitTrip" }} />
+      <Tabs.Screen name="help" options={{ title: "Help | SplitTrip" }} />
     </Tabs>
   );
 }

@@ -10,7 +10,8 @@ import { AppText } from "../primitives/AppText";
 const MENU_ITEMS = [
   { href: "/home", label: "Home" },
   { href: "/trips", label: "Trips" },
-  { href: "/account", label: "Account" }
+  { href: "/account", label: "Account" },
+  { href: "/help", label: "Help" }
 ] as const;
 
 export function AppHeaderMenu() {
