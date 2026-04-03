@@ -1,4 +1,4 @@
-import { PropsWithChildren, ReactElement, useMemo } from "react";
+import { PropsWithChildren, ReactElement, ReactNode, RefObject, useMemo } from "react";
 import { Platform, RefreshControl, RefreshControlProps, ScrollView, StyleProp, StyleSheet, View, ViewStyle, useWindowDimensions } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -11,9 +11,11 @@ type AppScreenProps = PropsWithChildren<{
   contentStyle?: StyleProp<ViewStyle>;
   showHeaderMenu?: boolean;
   refreshControl?: ReactElement<RefreshControlProps>;
+  stickyBanner?: ReactNode;
+  scrollRef?: RefObject<ScrollView | null>;
 }>;
 
-export function AppScreen({ children, maxWidth, contentStyle, showHeaderMenu = false, refreshControl }: AppScreenProps) {
+export function AppScreen({ children, maxWidth, contentStyle, showHeaderMenu = false, refreshControl, stickyBanner, scrollRef }: AppScreenProps) {
   const { theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { width } = useWindowDimensions();
@@ -24,7 +26,9 @@ export function AppScreen({ children, maxWidth, contentStyle, showHeaderMenu = f
 
   return (
     <SafeAreaView edges={["top", "bottom"]} style={styles.safeArea}>
+      {stickyBanner}
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={[
           styles.scrollContent,
           {

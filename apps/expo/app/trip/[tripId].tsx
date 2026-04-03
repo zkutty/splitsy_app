@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Linking from "expo-linking";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
@@ -113,6 +113,15 @@ export default function TripDetailsScreen() {
   const [showRemovedMembers, setShowRemovedMembers] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [settleUpTransfer, setSettleUpTransfer] = useState<SettlementTransfer | null>(null);
+
+  const scrollRef = useRef<ScrollView>(null);
+  const sectionRefs = {
+    expenses: useRef<View>(null),
+    balances: useRef<View>(null),
+    payments: useRef<View>(null),
+    members:  useRef<View>(null),
+    activity: useRef<View>(null),
+  };
 
   // Filter and view state for expenses
   const [viewMode, setViewMode] = useState<'list' | 'summary'>('list');
@@ -491,6 +500,16 @@ export default function TripDetailsScreen() {
     }
   };
 
+  const scrollToSection = (key: keyof typeof sectionRefs) => {
+    const target = sectionRefs[key];
+    if (!target.current || !scrollRef.current) return;
+    target.current.measureLayout(
+      scrollRef.current as any,
+      (_x: number, y: number) => { scrollRef.current!.scrollTo({ y: Math.max(0, y - 8), animated: true }); },
+      () => {}
+    );
+  };
+
   const onRefresh = useCallback(async () => {
     setIsRefreshing(true);
     setTimeout(() => {
@@ -797,8 +816,29 @@ export default function TripDetailsScreen() {
     setSelectedPayerId(null);
   };
 
+  const jumpSections: { key: keyof typeof sectionRefs; label: string }[] = [
+    { key: "expenses", label: "Expenses" },
+    { key: "balances", label: "Balances" },
+    { key: "payments", label: trip.status === "active" ? "Repayments" : "Payments" },
+    { key: "members",  label: "Members" },
+    { key: "activity", label: "Activity" },
+  ];
+
+  const jumpBar = compact ? (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={{ paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.xs, gap: theme.spacing.sm }}
+      style={{ backgroundColor: theme.colors.background.canvas, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border.subtle }}
+    >
+      {jumpSections.map(({ key, label }) => (
+        <Chip key={key} label={label} selected={false} onPress={() => scrollToSection(key)} />
+      ))}
+    </ScrollView>
+  ) : null;
+
   return (
-    <AppScreen maxWidth={1200} refreshControl={
+    <AppScreen maxWidth={1200} scrollRef={scrollRef} stickyBanner={jumpBar} refreshControl={
       Platform.OS !== "web" ? (
         <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
       ) : undefined
@@ -870,6 +910,7 @@ export default function TripDetailsScreen() {
             </AppButton>
           ) : null}
 
+          <View ref={sectionRefs.expenses} collapsable={false}>
           <SectionCard
             title="Expenses"
             collapsible
@@ -976,9 +1017,11 @@ export default function TripDetailsScreen() {
               />
             )}
           </SectionCard>
+          </View>
         </View>
 
         <View style={[styles.secondaryColumn, wide ? styles.secondaryColumnWide : null]}>
+          <View ref={sectionRefs.balances} collapsable={false}>
           <SectionCard title="Balances" collapsible description="Positive values are owed back. Negative values still owe the group.">
             {settlement?.balances.map((balance) => {
               const key = balance.entity.type === 'group'
@@ -995,7 +1038,9 @@ export default function TripDetailsScreen() {
               );
             })}
           </SectionCard>
+          </View>
 
+          <View ref={sectionRefs.payments} collapsable={false}>
           {trip.status === "active" ? (
             <SectionCard title="Repayments" description="SplitTrip minimizes the number of transfers needed to settle up.">
               {settlement?.transfers.length ? (
@@ -1054,7 +1099,9 @@ export default function TripDetailsScreen() {
               )}
             </SectionCard>
           )}
+          </View>
 
+          <View ref={sectionRefs.members} collapsable={false}>
           <SectionCard
             title="Members"
             description={
@@ -1339,7 +1386,9 @@ export default function TripDetailsScreen() {
               </View>
             ) : null}
           </SectionCard>
+          </View>
 
+          <View ref={sectionRefs.activity} collapsable={false}>
           <SectionCard
             title="Activity"
             collapsible
@@ -1348,6 +1397,7 @@ export default function TripDetailsScreen() {
           >
             <ActivityFeed events={activityLog} />
           </SectionCard>
+          </View>
         </View>
       </View>
 
