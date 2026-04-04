@@ -1,6 +1,6 @@
 import { Link } from "expo-router";
 import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
+import { LayoutAnimation, Platform, Pressable, StyleSheet, UIManager, View, useWindowDimensions } from "react-native";
 
 import { useTrips } from "../../src/providers/trips-provider";
 import { AppScreen } from "../../src/ui/layout/AppScreen";
@@ -11,9 +11,14 @@ import { CurrencyPicker } from "../../src/ui/primitives/CurrencyPicker";
 import { DatePicker } from "../../src/ui/primitives/DatePicker";
 import { SurfaceCard } from "../../src/ui/primitives/SurfaceCard";
 import { Theme, useAppTheme } from "../../src/ui/theme";
+import type { Trip } from "@splitsy/domain";
+
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 export default function TripsScreen() {
-  const { trips, authMode, currentUser, isLoading, createTrip } = useTrips();
+  const { trips, authMode, isLoading, createTrip, archiveTrip, unarchiveTrip } = useTrips();
   const { theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [name, setName] = useState("");
@@ -24,9 +29,14 @@ export default function TripsScreen() {
   const [isCreatingTrip, setIsCreatingTrip] = useState(false);
   const [createTripError, setCreateTripError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [togglingArchiveId, setTogglingArchiveId] = useState<string | null>(null);
   const { width } = useWindowDimensions();
   const wide = width >= 960;
   const compact = width < 768;
+
+  const activeTrips = useMemo(() => trips.filter((trip) => !trip.isArchived), [trips]);
+  const archivedTrips = useMemo(() => trips.filter((trip) => trip.isArchived), [trips]);
 
   const getErrorMessage = (error: unknown) => {
     if (error instanceof Error) {
@@ -38,6 +48,69 @@ export default function TripsScreen() {
     }
 
     return "Unable to create trip.";
+  };
+
+  const handleArchive = async (tripId: string) => {
+    setTogglingArchiveId(tripId);
+    try {
+      await archiveTrip(tripId);
+    } finally {
+      setTogglingArchiveId(null);
+    }
+  };
+
+  const handleUnarchive = async (tripId: string) => {
+    setTogglingArchiveId(tripId);
+    try {
+      await unarchiveTrip(tripId);
+    } finally {
+      setTogglingArchiveId(null);
+    }
+  };
+
+  const renderTripCard = (trip: Trip, isArchived: boolean) => {
+    const isToggling = togglingArchiveId === trip.id;
+
+    return (
+      <View key={trip.id} style={styles.tripCardWrapper}>
+        <Link href={{ pathname: "/trip/[tripId]", params: { tripId: trip.id } }} asChild>
+          <Pressable style={({ pressed }) => [styles.linkWrapper, pressed ? styles.linkWrapperPressed : null]}>
+            <SurfaceCard style={styles.tripCard}>
+              <View style={styles.tripTopRow}>
+                <View style={styles.tripBadge}>
+                  <AppText variant="meta" color="inverse">
+                    Trip
+                  </AppText>
+                </View>
+                <AppText variant="bodySm" color="muted">
+                  {trip.tripCurrencyCode} · {trip.members.length} members · {trip.status ?? "active"}
+                </AppText>
+              </View>
+              <AppText variant="sectionTitle">{trip.name}</AppText>
+              <View style={styles.tripMeta}>
+                <AppText variant="bodySm" color="secondary">
+                  {trip.destination ?? "Destination TBD"}
+                  {trip.startDate
+                    ? ` · ${trip.startDate}${trip.endDate ? ` – ${trip.endDate}` : ""}`
+                    : ""}
+                </AppText>
+              </View>
+            </SurfaceCard>
+          </Pressable>
+        </Link>
+
+        <Pressable
+          onPress={() => (isArchived ? handleUnarchive(trip.id) : handleArchive(trip.id))}
+          disabled={isToggling}
+          style={styles.archiveButton}
+          hitSlop={8}
+        >
+          <AppText variant="meta" color="muted">
+            {isToggling ? "…" : isArchived ? "Unarchive" : "Archive"}
+          </AppText>
+        </Pressable>
+      </View>
+    );
   };
 
   return (
@@ -63,7 +136,7 @@ export default function TripsScreen() {
         </SurfaceCard>
       ) : null}
 
-      {!isLoading && trips.length === 0 ? (
+      {!isLoading && activeTrips.length === 0 && archivedTrips.length === 0 ? (
         <SurfaceCard style={styles.emptyState}>
           <AppText variant="sectionTitle">Your first trip starts here.</AppText>
           <AppText variant="bodySm" color="muted">
@@ -72,36 +145,40 @@ export default function TripsScreen() {
         </SurfaceCard>
       ) : null}
 
-      {!isLoading && trips.length > 0 ? (
+      {!isLoading && activeTrips.length > 0 ? (
         <View style={styles.tripList}>
-          {trips.map((trip) => (
-            <Link href={{ pathname: "/trip/[tripId]", params: { tripId: trip.id } }} key={trip.id} asChild>
-              <Pressable style={({ pressed }) => [styles.linkWrapper, pressed ? styles.linkWrapperPressed : null]}>
-                <SurfaceCard style={styles.tripCard}>
-                  <View style={styles.tripTopRow}>
-                    <View style={styles.tripBadge}>
-                      <AppText variant="meta" color="inverse">
-                        Trip
-                      </AppText>
-                    </View>
-                    <AppText variant="bodySm" color="muted">
-                      {trip.tripCurrencyCode} · {trip.members.length} members · {trip.status ?? "active"}
-                    </AppText>
-                  </View>
-                  <AppText variant="sectionTitle">{trip.name}</AppText>
-                  <View style={styles.tripMeta}>
-                    <AppText variant="bodySm" color="secondary">
-                      {trip.destination ?? "Destination TBD"}
-                      {trip.startDate
-                        ? ` · ${trip.startDate}${trip.endDate ? ` – ${trip.endDate}` : ""}`
-                        : ""}
-                    </AppText>
-                  </View>
-                </SurfaceCard>
-              </Pressable>
-            </Link>
-          ))}
+          {activeTrips.map((trip) => renderTripCard(trip, false))}
         </View>
+      ) : null}
+
+      {/* Archived trips — collapsible section */}
+      {!isLoading && archivedTrips.length > 0 ? (
+        <SurfaceCard style={styles.archivedCard}>
+          <Pressable
+            onPress={() => {
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+              setShowArchived((prev) => !prev);
+            }}
+            style={styles.archivedToggle}
+            hitSlop={4}
+          >
+            <View style={styles.archivedToggleCopy}>
+              <AppText variant="sectionTitle">Archived</AppText>
+              <AppText variant="bodySm" color="muted">
+                {archivedTrips.length} trip{archivedTrips.length !== 1 ? "s" : ""} hidden from view
+              </AppText>
+            </View>
+            <AppText variant="body" color="muted">
+              {showArchived ? "−" : "+"}
+            </AppText>
+          </Pressable>
+
+          {showArchived ? (
+            <View style={styles.tripList}>
+              {archivedTrips.map((trip) => renderTripCard(trip, true))}
+            </View>
+          ) : null}
+        </SurfaceCard>
       ) : null}
 
       {/* Create trip — collapsible section */}
@@ -210,7 +287,7 @@ export default function TripsScreen() {
                 <AppText variant="meta" color="muted">
                   Trips
                 </AppText>
-                <AppText variant="sectionTitle">{trips.length}</AppText>
+                <AppText variant="sectionTitle">{activeTrips.length}</AppText>
               </View>
               <View style={styles.statCard}>
                 <AppText variant="meta" color="muted">
@@ -235,6 +312,9 @@ function createStyles(theme: Theme) {
     tripList: {
       gap: theme.spacing.sm
     },
+    tripCardWrapper: {
+      position: "relative"
+    },
     linkWrapper: {
       borderRadius: theme.radius.xl
     },
@@ -242,7 +322,8 @@ function createStyles(theme: Theme) {
       opacity: 0.88
     },
     tripCard: {
-      gap: theme.spacing.xs
+      gap: theme.spacing.xs,
+      paddingBottom: theme.spacing.xl
     },
     tripTopRow: {
       flexDirection: "row",
@@ -261,6 +342,27 @@ function createStyles(theme: Theme) {
       flexDirection: "row",
       flexWrap: "wrap",
       gap: theme.spacing.xs
+    },
+    archiveButton: {
+      position: "absolute",
+      bottom: theme.spacing.sm,
+      right: theme.spacing.md,
+      paddingHorizontal: theme.spacing.sm,
+      paddingVertical: theme.spacing.xxs
+    },
+    /* Archived section */
+    archivedCard: {
+      gap: theme.spacing.md
+    },
+    archivedToggle: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: theme.spacing.md
+    },
+    archivedToggleCopy: {
+      flex: 1,
+      gap: theme.spacing.xxs
     },
     /* Create trip section */
     createCard: {

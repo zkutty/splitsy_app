@@ -57,6 +57,7 @@ export type Trip = {
   completedAt?: string | null;
   completedByUserId?: string | null;
   settledAt?: string | null;
+  isArchived?: boolean;
   members: Member[];
   groups: MemberGroup[];
 };

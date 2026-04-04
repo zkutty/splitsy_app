@@ -44,6 +44,8 @@ export type TripsRepository = {
   addMemberToGroup: (memberId: string, groupId: string) => Promise<void>;
   removeMemberFromGroup: (memberId: string) => Promise<void>;
   listActivityLog: (tripId: string) => Promise<TripActivityEvent[]>;
+  archiveTrip: (tripId: string) => Promise<void>;
+  unarchiveTrip: (tripId: string) => Promise<void>;
 };
 
 const demoRepository = (): TripsRepository => {
@@ -468,7 +470,13 @@ const demoRepository = (): TripsRepository => {
         }))
       }));
     },
-    listActivityLog: async (_tripId) => []
+    listActivityLog: async (_tripId) => [],
+    archiveTrip: async (tripId) => {
+      trips = trips.map((trip) => (trip.id === tripId ? { ...trip, isArchived: true } : trip));
+    },
+    unarchiveTrip: async (tripId) => {
+      trips = trips.map((trip) => (trip.id === tripId ? { ...trip, isArchived: false } : trip));
+    }
   };
 };
 
@@ -527,6 +535,8 @@ const supabaseRepository = (): TripsRepository => {
         .map((m: typeof members[number]) => m.id);
     }
 
+    const prefRow = (row.user_trip_preferences ?? [])[0];
+
     return {
       id: row.id,
       createdByUserId: row.created_by_user_id,
@@ -539,6 +549,7 @@ const supabaseRepository = (): TripsRepository => {
       completedAt: row.completed_at ?? null,
       completedByUserId: row.completed_by_user_id ?? null,
       settledAt: row.settled_at ?? null,
+      isArchived: prefRow?.is_archived ?? false,
       members,
       groups: tripGroups
     };
@@ -638,7 +649,7 @@ const supabaseRepository = (): TripsRepository => {
       const { data, error } = await supabase
         .from("trips")
         .select(
-          "id, created_by_user_id, status, name, destination, trip_currency_code, start_date, end_date, completed_at, completed_by_user_id, settled_at, trip_members(id, user_id, display_name, avatar_url, email, claimed_at, status, removed_at, group_id), trip_groups(id, name)"
+          "id, created_by_user_id, status, name, destination, trip_currency_code, start_date, end_date, completed_at, completed_by_user_id, settled_at, trip_members(id, user_id, display_name, avatar_url, email, claimed_at, status, removed_at, group_id), trip_groups(id, name), user_trip_preferences!left(is_archived)"
         )
         .order("start_date", { ascending: false });
 
@@ -1221,6 +1232,14 @@ const supabaseRepository = (): TripsRepository => {
         payload: row.payload ?? null,
         createdAt: row.created_at
       }));
+    },
+    archiveTrip: async (tripId) => {
+      const { error } = await supabase.rpc("archive_trip", { target_trip_id: tripId });
+      if (error) throw error;
+    },
+    unarchiveTrip: async (tripId) => {
+      const { error } = await supabase.rpc("unarchive_trip", { target_trip_id: tripId });
+      if (error) throw error;
     }
   };
 };

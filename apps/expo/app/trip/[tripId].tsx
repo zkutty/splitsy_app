@@ -65,7 +65,9 @@ export default function TripDetailsScreen() {
     addMemberToGroup,
     removeMemberFromGroup,
     getGroupsForTrip,
-    getActivityLogForTrip
+    getActivityLogForTrip,
+    archiveTrip,
+    unarchiveTrip
   } = useTrips();
   const { theme } = useAppTheme();
   const { width } = useWindowDimensions();
@@ -98,6 +100,7 @@ export default function TripDetailsScreen() {
   const [isAddingMember, setIsAddingMember] = useState(false);
   const [isCompletingTrip, setIsCompletingTrip] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isTogglingArchive, setIsTogglingArchive] = useState(false);
   const [isCreatingInvite, setIsCreatingInvite] = useState(false);
   const [inviteLink, setInviteLink] = useState("");
   const [inviteFeedback, setInviteFeedback] = useState<string | null>(null);
@@ -901,6 +904,27 @@ export default function TripDetailsScreen() {
                   {isExporting ? "Exporting..." : "Export CSV"}
                 </AppButton>
               ) : null}
+              {currentMember ? (
+                <AppButton
+                  onPress={async () => {
+                    setIsTogglingArchive(true);
+                    try {
+                      if (trip?.isArchived) {
+                        await unarchiveTrip(trip.id);
+                      } else {
+                        await archiveTrip(trip.id);
+                      }
+                    } finally {
+                      setIsTogglingArchive(false);
+                    }
+                  }}
+                  variant="secondary"
+                  fullWidth={false}
+                  disabled={isTogglingArchive}
+                >
+                  {isTogglingArchive ? "…" : trip?.isArchived ? "Unarchive" : "Archive"}
+                </AppButton>
+              ) : null}
             </View>
           </SurfaceCard>
 
@@ -1126,7 +1150,7 @@ export default function TripDetailsScreen() {
                       value={inviteLink}
                       onChangeText={setInviteLink}
                       editable={false}
-                      helperText="This invite link is one-time use in the current implementation."
+                      helperText="Anyone with this link can join the trip."
                     />
                     <AppButton onPress={() => copyInviteLink(inviteLink)} variant="secondary" fullWidth={false}>
                       Copy link

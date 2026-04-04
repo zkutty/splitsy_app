@@ -16,8 +16,9 @@ export default function HomeScreen() {
   const { width } = useWindowDimensions();
   const wide = width >= 960;
   const compact = width < 520;
-  const recentTrips = trips.slice(0, 3);
-  const activeTripCount = trips.filter((trip) => (trip.status ?? "active") === "active").length;
+  const visibleTrips = trips.filter((trip) => !trip.isArchived);
+  const recentTrips = visibleTrips.slice(0, 3);
+  const activeTripCount = visibleTrips.filter((trip) => (trip.status ?? "active") === "active").length;
 
   return (
     <AppScreen showHeaderMenu>
