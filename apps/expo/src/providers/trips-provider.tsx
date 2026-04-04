@@ -1,6 +1,6 @@
 import type { Expense, MemberGroup, PaymentMethodType, Trip, TripActivityEvent, TripSettlementTransfer, UserProfile } from "@splitsy/domain";
 import { settleTrip } from "@splitsy/domain";
-import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
 
 import { useSession } from "./session-provider";
@@ -49,6 +49,8 @@ type TripsContextValue = {
   getGroupsForTrip: (tripId: string) => MemberGroup[];
   getMemberGroup: (tripId: string, memberId: string) => MemberGroup | undefined;
   getActivityLogForTrip: (tripId: string) => TripActivityEvent[];
+  archiveTrip: (tripId: string) => Promise<void>;
+  unarchiveTrip: (tripId: string) => Promise<void>;
 };
 
 const TRIPS_CONTEXT_KEY = "__splittrip_trips_context__";
@@ -69,6 +71,10 @@ export function TripsProvider({ children }: PropsWithChildren) {
   const [isLoading, setIsLoading] = useState(true);
   const session = useSession();
   const repository = useMemo(() => createTripsRepository(), []);
+  // Tracks the user ID we last loaded trips for. Prevents spurious reloads when
+  // session-provider's hydrateSession() updates the session object with the same
+  // user (different object reference) after onAuthStateChange already fired.
+  const loadedForUserIdRef = useRef<string>('');
 
   const currentUser: UserProfile = useMemo(
     () =>
@@ -130,6 +136,7 @@ export function TripsProvider({ children }: PropsWithChildren) {
       setExpenses([]);
       setSettlementTransfers([]);
       setActivityLogs([]);
+      loadedForUserIdRef.current = '';
       setIsLoading(false);
       return;
     }
@@ -139,6 +146,14 @@ export function TripsProvider({ children }: PropsWithChildren) {
       return;
     }
 
+    // Skip if we already started (or completed) a load for this user.
+    // This prevents a second load when session-provider calls setSession() again
+    // after hydrateSession()'s getUser() verify — same user ID, new object reference.
+    if (loadedForUserIdRef.current === currentUser.id) {
+      return;
+    }
+    loadedForUserIdRef.current = currentUser.id;
+
     const load = async () => {
       setIsLoading(true);
       await reloadTripData(currentUser);
@@ -147,6 +162,8 @@ export function TripsProvider({ children }: PropsWithChildren) {
 
     load().catch((error) => {
       console.error("Failed to load trip data", error);
+      // Reset so the next session change can retry the load.
+      loadedForUserIdRef.current = '';
       setIsLoading(false);
     });
   }, [currentUser, repository, session.isAuthenticated, session.isLoading]);
@@ -520,7 +537,15 @@ export function TripsProvider({ children }: PropsWithChildren) {
         return trip?.groups?.find((g) => g.id === member.groupId);
       },
       getActivityLogForTrip: (tripId) =>
-        activityLogs.filter((event) => event.tripId === tripId)
+        activityLogs.filter((event) => event.tripId === tripId),
+      archiveTrip: async (tripId) => {
+        await repository.archiveTrip(tripId);
+        setTrips((current) => current.map((t) => (t.id === tripId ? { ...t, isArchived: true } : t)));
+      },
+      unarchiveTrip: async (tripId) => {
+        await repository.unarchiveTrip(tripId);
+        setTrips((current) => current.map((t) => (t.id === tripId ? { ...t, isArchived: false } : t)));
+      }
     }),
     [activityLogs, currentUser, expenses, isLoading, repository, session.authMode, session.signOut, session.user, settlementTransfers, trips]
   );
