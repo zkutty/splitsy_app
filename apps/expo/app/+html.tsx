@@ -24,7 +24,15 @@ export default function RootHtml({ children }: PropsWithChildren) {
         <link rel="apple-touch-icon" href="/favicon.png" />
         <ScrollViewStyleReset />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        {/* Cloudflare Web Analytics – free, cookie-free, real-visitor tracking */}
+        <script
+          defer
+          src="https://static.cloudflareinsights.com/beacon.min.js"
+          data-cf-beacon='{"token": "REPLACE_WITH_YOUR_CF_ANALYTICS_TOKEN"}'
+        />
+      </body>
     </html>
   );
 }
