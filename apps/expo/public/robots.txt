@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /auth/
+Disallow: /join/
+Disallow: /trip/
+
+Sitemap: https://splittrip.app/sitemap.xml
