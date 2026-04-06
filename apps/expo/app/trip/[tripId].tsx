@@ -33,6 +33,7 @@ import { SettleUpModal } from "../../src/ui/primitives/SettleUpModal";
 import { ExpenseFilters } from "../../src/ui/primitives/ExpenseFilters";
 import { ExpenseSummaryView } from "../../src/ui/primitives/ExpenseSummaryView";
 import { Theme, useAppTheme } from "../../src/ui/theme";
+import { loadExpenseDefaults, saveExpenseDefaults } from "../../src/lib/expense-defaults";
 
 export default function TripDetailsScreen() {
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
@@ -83,15 +84,17 @@ export default function TripDetailsScreen() {
   const groups = getGroupsForTrip(tripId);
   const activityLog = getActivityLogForTrip(tripId);
 
+  const savedDefaults = useMemo(() => loadExpenseDefaults(tripId), [tripId]);
+
   const [amount, setAmount] = useState("");
   const [expenseDate, setExpenseDate] = useState(new Date().toISOString().slice(0, 10));
   const [currencyCode, setCurrencyCode] = useState(trip?.tripCurrencyCode ?? "USD");
-  const [category, setCategory] = useState(PRESET_CATEGORIES[0].id);
+  const [category, setCategory] = useState(savedDefaults?.category ?? PRESET_CATEGORIES[0].id);
   const [customCategory, setCustomCategory] = useState("");
   const [note, setNote] = useState("");
-  const [paidByMemberId, setPaidByMemberId] = useState(trip?.members[0]?.id ?? "");
-  const [selectedMembers, setSelectedMembers] = useState<string[]>(trip?.members.map((member) => member.id) ?? []);
-  const [splitMode, setSplitMode] = useState<SplitMode>("equal");
+  const [paidByMemberId, setPaidByMemberId] = useState(savedDefaults?.paidByMemberId ?? trip?.members[0]?.id ?? "");
+  const [selectedMembers, setSelectedMembers] = useState<string[]>(savedDefaults?.involvedMemberIds ?? trip?.members.map((member) => member.id) ?? []);
+  const [splitMode, setSplitMode] = useState<SplitMode>(savedDefaults?.splitMode ?? "equal");
   const [splitShares, setSplitShares] = useState<Record<string, string>>({});
   const [memberName, setMemberName] = useState("");
   const [memberEmail, setMemberEmail] = useState("");
@@ -483,12 +486,17 @@ export default function TripDetailsScreen() {
         await updateExpense(editingExpenseId, trip.id, expensePayload);
       } else {
         await addExpense(trip.id, expensePayload);
+        saveExpenseDefaults(tripId, {
+          paidByMemberId,
+          involvedMemberIds: selectedMembers,
+          splitMode,
+          category,
+        });
       }
 
       setAmount("");
       setNote("");
       setCustomCategory("");
-      setSplitMode("equal");
       setSplitShares({});
       setEditingExpenseId(null);
       setShowExpenseModal(false);
@@ -550,17 +558,18 @@ export default function TripDetailsScreen() {
   };
 
   const cancelEditingExpense = () => {
+    const defaults = loadExpenseDefaults(tripId);
     setEditingExpenseId(null);
     setShowExpenseModal(false);
     setAmount("");
     setExpenseDate(new Date().toISOString().slice(0, 10));
     setCurrencyCode(trip.tripCurrencyCode);
-    setCategory(PRESET_CATEGORIES[0].id);
+    setCategory(defaults?.category ?? PRESET_CATEGORIES[0].id);
     setCustomCategory("");
     setNote("");
-    setPaidByMemberId(activeMembers[0]?.id ?? "");
-    setSelectedMembers(activeMembers.map((member) => member.id));
-    setSplitMode("equal");
+    setPaidByMemberId(defaults?.paidByMemberId ?? activeMembers[0]?.id ?? "");
+    setSelectedMembers(defaults?.involvedMemberIds ?? activeMembers.map((member) => member.id));
+    setSplitMode(defaults?.splitMode ?? "equal");
     setSplitShares({});
     setErrors([]);
   };
