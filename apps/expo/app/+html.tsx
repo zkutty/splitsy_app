@@ -30,7 +30,7 @@ export default function RootHtml({ children }: PropsWithChildren) {
         <script
           defer
           src="https://static.cloudflareinsights.com/beacon.min.js"
-          data-cf-beacon='{"token": "REPLACE_WITH_YOUR_CF_ANALYTICS_TOKEN"}'
+          data-cf-beacon='{"token": "43df86215c774b9ebaeb2af648222639"}'
         />
       </body>
     </html>
