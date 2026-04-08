@@ -10,9 +10,9 @@ const SITE_URL = "https://splittrip.app";
  *  the defaults baked into the SPA shell by +html.tsx. */
 const ROUTE_META = {
   "/": {
-    title: "SplitTrip | Shared travel expenses",
+    title: "SplitTrip | Split travel expenses with zero hassle",
     description:
-      "Track group travel spending, split costs fairly, and settle in one pass. Create a trip, invite friends, log expenses in any currency, and let SplitTrip calculate the minimum repayments.",
+      "SplitTrip lets groups track shared travel costs in any currency, then calculates the fewest payments needed to settle up. Free, no spreadsheets, no arguments.",
   },
   "/sign-in": {
     title: "Sign in | SplitTrip",
