@@ -1,20 +1,41 @@
 import { PropsWithChildren, useMemo } from "react";
-import { StyleProp, StyleSheet, Text, TextStyle } from "react-native";
+import { Platform, StyleProp, StyleSheet, Text, TextStyle } from "react-native";
 
 import { Theme, useAppTheme } from "../theme";
 
+type Variant = "eyebrow" | "title" | "sectionTitle" | "body" | "bodySm" | "meta";
+
 type AppTextProps = PropsWithChildren<{
-  variant?: "eyebrow" | "title" | "sectionTitle" | "body" | "bodySm" | "meta";
+  variant?: Variant;
   color?: "primary" | "secondary" | "muted" | "inverse" | "accent" | "success" | "danger";
   align?: "left" | "center";
   style?: StyleProp<TextStyle>;
 }>;
 
+/** Map text variants to semantic HTML roles so web crawlers see proper headings. */
+const WEB_ROLES: Partial<Record<Variant, string>> = {
+  title: "heading",
+  sectionTitle: "heading",
+};
+const WEB_ARIA_LEVELS: Partial<Record<Variant, number>> = {
+  title: 1,
+  sectionTitle: 2,
+};
+
 export function AppText({ children, variant = "body", color = "primary", align = "left", style }: AppTextProps) {
   const { theme } = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
 
-  return <Text style={[styles.base, variantStyles[variant], styles[color], { textAlign: align }, style]}>{children}</Text>;
+  const webProps =
+    Platform.OS === "web" && WEB_ROLES[variant]
+      ? { role: WEB_ROLES[variant] as any, "aria-level": WEB_ARIA_LEVELS[variant] }
+      : undefined;
+
+  return (
+    <Text {...webProps} style={[styles.base, variantStyles[variant], styles[color], { textAlign: align }, style]}>
+      {children}
+    </Text>
+  );
 }
 
 const variantStyles = StyleSheet.create({
