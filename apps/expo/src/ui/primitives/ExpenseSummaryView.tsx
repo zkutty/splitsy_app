@@ -3,6 +3,7 @@ import type { ExpenseSummary } from "../../lib/expense-utils";
 import { getCategoryColor } from "../../lib/expense-utils";
 import { useAppTheme, type Theme } from "../theme";
 import { AppText } from "./AppText";
+import { FinancialDisclaimer } from "./FinancialDisclaimer";
 import { ProgressBar } from "./ProgressBar";
 import { SurfaceCard } from "./SurfaceCard";
 
@@ -138,6 +139,8 @@ export function ExpenseSummaryView({
           ))}
         </View>
       </View>
+
+      <FinancialDisclaimer />
     </View>
   );
 }

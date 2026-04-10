@@ -16,6 +16,7 @@ import { AppButton } from "./AppButton";
 import { AppInput } from "./AppInput";
 import { AppText } from "./AppText";
 import { Chip } from "./Chip";
+import { FinancialDisclaimer } from "./FinancialDisclaimer";
 import { SurfaceCard } from "./SurfaceCard";
 import { Theme, useAppTheme } from "../theme";
 
@@ -255,6 +256,8 @@ export function SettleUpModal({
                   ))}
                 </SurfaceCard>
               )}
+
+              <FinancialDisclaimer />
 
               <View style={styles.actions}>
                 <AppButton onPress={handleSubmit} disabled={isSaving}>

@@ -4,6 +4,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 
 import { AppHeaderMenu } from "../navigation/AppHeaderMenu";
 import { BrandMark } from "../navigation/BrandMark";
+import { LegalFooter } from "../primitives/LegalFooter";
 import { Theme, useAppTheme } from "../theme";
 
 type AppScreenProps = PropsWithChildren<{
@@ -48,6 +49,7 @@ export function AppScreen({ children, maxWidth, contentStyle, showHeaderMenu = f
             </View>
           ) : null}
           {children}
+          <LegalFooter />
         </View>
       </ScrollView>
     </SafeAreaView>

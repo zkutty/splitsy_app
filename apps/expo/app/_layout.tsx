@@ -32,6 +32,8 @@ function RootNavigator() {
       <Stack.Screen name="trip/[tripId]" options={{ title: "Trip Details | SplitTrip" }} />
       <Stack.Screen name="join/[token]" options={{ title: "Join Trip | SplitTrip" }} />
       <Stack.Screen name="auth/callback" options={{ headerShown: false, title: "SplitTrip | Shared travel expenses" }} />
+      <Stack.Screen name="privacy" options={{ title: "Privacy Policy | SplitTrip", presentation: "modal" }} />
+      <Stack.Screen name="terms" options={{ title: "Terms of Service | SplitTrip", presentation: "modal" }} />
     </Stack>
   );
 }
