@@ -1,5 +1,5 @@
 import type { Expense, MemberGroup, PaymentMethodType, Trip, TripActivityEvent, TripSettlementTransfer, UserProfile } from "@splitsy/domain";
-import { settleTrip } from "@splitsy/domain";
+import { settleEarlyDeparture, settleTrip } from "@splitsy/domain";
 import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
 
@@ -23,6 +23,8 @@ type TripsContextValue = {
   acceptTripInvite: (token: string) => Promise<string>;
   addTripMember: (tripId: string, input: { displayName: string; email?: string }) => Promise<void>;
   removeTripMember: (tripId: string, memberId: string) => Promise<void>;
+  departTripMember: (tripId: string, memberId: string) => Promise<void>;
+  rejoinTripMember: (tripId: string, memberId: string) => Promise<void>;
   getTripById: (tripId: string) => Trip | undefined;
   getCurrentMemberForTrip: (tripId: string) => Trip["members"][number] | undefined;
   canEditTrip: (tripId: string) => boolean;
@@ -287,6 +289,40 @@ export function TripsProvider({ children }: PropsWithChildren) {
         const updatedTrip = await repository.removeTripMember(tripId, memberId);
         setTrips((current) => current.map((trip) => (trip.id === tripId ? updatedTrip : trip)));
       },
+      departTripMember: async (tripId, memberId) => {
+        const trip = trips.find((item) => item.id === tripId);
+
+        if (!trip) {
+          throw new Error("Trip not found.");
+        }
+
+        if (trip.createdByUserId !== currentUser.id || trip.status !== "active") {
+          throw new Error("Only the trip creator can record a departure from an active trip.");
+        }
+
+        // Compute early departure transfers for this member
+        const tripExpenses = expenses.filter((expense) => expense.tripId === tripId);
+        const departureTransfers = settleEarlyDeparture(
+          tripExpenses,
+          trip.members,
+          memberId,
+          trip.tripCurrencyCode
+        );
+
+        const result = await repository.departTripMember(tripId, memberId, departureTransfers);
+
+        setTrips((current) => current.map((item) => (item.id === tripId ? result.trip : item)));
+        setSettlementTransfers((current) => [...current, ...result.transfers]);
+      },
+      rejoinTripMember: async (tripId, memberId) => {
+        const updatedTrip = await repository.rejoinTripMember(tripId, memberId);
+
+        setTrips((current) => current.map((trip) => (trip.id === tripId ? updatedTrip : trip)));
+        // Remove early departure transfers for this member from local state
+        setSettlementTransfers((current) =>
+          current.filter((t) => !(t.tripId === tripId && t.departedMemberId === memberId))
+        );
+      },
       getTripById: (tripId) => trips.find((trip) => trip.id === tripId),
       getCurrentMemberForTrip: (tripId) =>
         trips
@@ -308,17 +344,22 @@ export function TripsProvider({ children }: PropsWithChildren) {
           throw new Error("Only the trip creator can complete an active trip.");
         }
 
+        // Gather early settlement adjustments so departed members are accounted for
+        const earlySettlements = await repository.getEarlySettlementsForTrip(tripId);
+
         const transferSnapshot = settleTrip(
           expenses.filter((expense) => expense.tripId === tripId),
           trip.members,
           trip.groups || [],
-          trip.tripCurrencyCode
+          trip.tripCurrencyCode,
+          earlySettlements.length > 0 ? earlySettlements : undefined
         ).transfers;
         const result = await repository.completeTrip(tripId, transferSnapshot);
 
         setTrips((current) => current.map((item) => (item.id === tripId ? result.trip : item)));
         setSettlementTransfers((current) => [
-          ...current.filter((transfer) => transfer.tripId !== tripId),
+          // Keep early departure transfers, replace trip_completion ones
+          ...current.filter((transfer) => transfer.tripId !== tripId || transfer.settlementType === 'early_departure'),
           ...result.transfers
         ]);
       },
@@ -334,7 +375,16 @@ export function TripsProvider({ children }: PropsWithChildren) {
         const transfer = settlementTransfers.find((item) => item.id === transferId);
         const trip = transfer ? trips.find((item) => item.id === transfer.tripId) : null;
 
-        if (!transfer || !trip || transfer.status !== "pending" || trip.status !== "completed") {
+        if (!transfer || !trip || transfer.status !== "pending") {
+          return false;
+        }
+
+        // Early departure transfers can be paid while trip is still active
+        const validTripStatus = transfer.settlementType === 'early_departure'
+          ? (trip.status === 'active' || trip.status === 'completed')
+          : trip.status === 'completed';
+
+        if (!validTripStatus) {
           return false;
         }
 
@@ -366,7 +416,16 @@ export function TripsProvider({ children }: PropsWithChildren) {
         const transfer = settlementTransfers.find((item) => item.id === transferId);
         const trip = transfer ? trips.find((item) => item.id === transfer.tripId) : null;
 
-        if (!transfer || !trip || transfer.status !== "paid" || trip.status !== "completed") {
+        if (!transfer || !trip || transfer.status !== "paid") {
+          return false;
+        }
+
+        // Early departure transfers can be confirmed while trip is still active
+        const validTripStatus = transfer.settlementType === 'early_departure'
+          ? (trip.status === 'active' || trip.status === 'completed')
+          : trip.status === 'completed';
+
+        if (!validTripStatus) {
           return false;
         }
 
