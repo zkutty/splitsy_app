@@ -362,6 +362,17 @@ Trip balances stay consistent.
 
 ---
 
+### Early Departures
+
+```
+Someone leaving the trip early?
+They settle their share and go.
+Future expenses adjust automatically.
+Rejoin anytime if plans change.
+```
+
+---
+
 # 7. Marketing Graphics Ideas
 
 Hero illustration concept

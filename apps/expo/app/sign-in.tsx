@@ -58,6 +58,12 @@ export default function SignInScreen() {
                 Settle instantly without spreadsheet cleanup.
               </AppText>
             </View>
+            <View style={styles.valueItem}>
+              <View style={[styles.dot, styles.dotPrimary]} />
+              <AppText variant="bodySm" color="secondary">
+                Someone leaving early? They settle up and go — the trip adjusts.
+              </AppText>
+            </View>
           </View>
         </View>
 
