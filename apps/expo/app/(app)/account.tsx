@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { StyleSheet, View, useWindowDimensions } from "react-native";
+import { Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 
 import type { PaymentMethodType } from "@splitsy/domain";
+
+import { Link } from "expo-router";
 
 import { useSession } from "../../src/providers/session-provider";
 import { useTrips } from "../../src/providers/trips-provider";
@@ -225,6 +227,25 @@ export default function AccountScreen() {
           ))}
         </View>
       </SurfaceCard>
+
+      <SurfaceCard style={styles.legalCard}>
+        <AppText variant="sectionTitle">Legal</AppText>
+        <AppText variant="bodySm" color="muted">
+          Review our privacy practices and terms of use.
+        </AppText>
+        <View style={styles.legalLinks}>
+          <Link href="/privacy" asChild>
+            <Pressable>
+              <AppButton variant="secondary">Privacy Policy</AppButton>
+            </Pressable>
+          </Link>
+          <Link href="/terms" asChild>
+            <Pressable>
+              <AppButton variant="secondary">Terms of Service</AppButton>
+            </Pressable>
+          </Link>
+        </View>
+      </SurfaceCard>
     </AppScreen>
   );
 }
@@ -282,6 +303,12 @@ function createStyles(theme: Theme) {
   },
   themeOption: {
     gap: theme.spacing.xs
+  },
+  legalCard: {
+    gap: theme.spacing.md
+  },
+  legalLinks: {
+    gap: theme.spacing.sm
   }
   });
 }

@@ -163,12 +163,6 @@ export default function LandingScreen() {
         </Link>
       </SurfaceCard>
 
-      {/* ---------- FOOTER ---------- */}
-      <View style={styles.footer}>
-        <AppText variant="meta" color="muted" align="center">
-          SplitTrip — shared travel expenses made simple.
-        </AppText>
-      </View>
     </AuthScreen>
   );
 }
@@ -265,9 +259,5 @@ function createStyles(theme: Theme) {
       marginTop: theme.spacing.xl,
     },
 
-    /* Footer */
-    footer: {
-      paddingVertical: theme.spacing.lg,
-    },
   });
 }

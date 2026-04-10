@@ -28,6 +28,7 @@ import { GroupCard } from "../../src/ui/primitives/GroupCard";
 import { GroupEditor } from "../../src/ui/primitives/GroupEditor";
 import { GroupMemberPicker } from "../../src/ui/primitives/GroupMemberPicker";
 import { ExpandableBalance } from "../../src/ui/primitives/ExpandableBalance";
+import { FinancialDisclaimer } from "../../src/ui/primitives/FinancialDisclaimer";
 import { ActivityFeed } from "../../src/ui/primitives/ActivityFeed";
 import { SettleUpModal } from "../../src/ui/primitives/SettleUpModal";
 import { ExpenseFilters } from "../../src/ui/primitives/ExpenseFilters";
@@ -1070,6 +1071,7 @@ export default function TripDetailsScreen() {
                 />
               );
             })}
+            <FinancialDisclaimer />
           </SectionCard>
           </View>
 
