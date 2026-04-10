@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 
-import type { Expense, Member } from "./domain";
-import { settleTrip } from "./settlement";
+import type { EarlySettlement, Expense, Member } from "./domain";
+import { settleEarlyDeparture, settleTrip } from "./settlement";
 import { validateExpenseDraft } from "./validation";
 
 test("settles equal split expenses into minimized transfers", () => {
@@ -352,5 +352,193 @@ test("validates custom split requires shares for all members", () => {
   expect(result.ok).toBe(false);
   if (!result.ok) {
     expect(result.errors.some((e) => e.includes("Every involved member"))).toBe(true);
+  }
+});
+
+test("settleEarlyDeparture computes transfers only involving the departing member", () => {
+  // A pays $100 split equally among A, B, C, D
+  const expenses: Expense[] = [
+    {
+      id: "1",
+      tripId: "trip",
+      expenseDate: "2026-03-25",
+      amount: 100,
+      currencyCode: "USD",
+      conversionRateToTripCurrency: 1,
+      tripAmount: 100,
+      category: "food",
+      paidByMemberId: "a",
+      involvedMemberIds: ["a", "b", "c", "d"],
+      splitMode: "equal",
+      splitShares: null,
+      createdAt: "2026-03-25T10:00:00.000Z"
+    }
+  ];
+
+  const members: Member[] = [
+    { id: "a", displayName: "Alice" },
+    { id: "b", displayName: "Bob" },
+    { id: "c", displayName: "Charlie" },
+    { id: "d", displayName: "Dave" }
+  ];
+
+  // D departs: net is -$25 (owes $25, paid $0)
+  const transfers = settleEarlyDeparture(expenses, members, "d", "USD");
+
+  expect(transfers.length).toBe(1);
+  expect(transfers[0].fromEntity).toEqual({ type: "member", memberId: "d" });
+  expect(transfers[0].toEntity).toEqual({ type: "member", memberId: "a" });
+  expect(transfers[0].amount).toBe(25);
+});
+
+test("settleEarlyDeparture returns empty array when member has zero balance", () => {
+  const expenses: Expense[] = [
+    {
+      id: "1",
+      tripId: "trip",
+      expenseDate: "2026-03-25",
+      amount: 100,
+      currencyCode: "USD",
+      conversionRateToTripCurrency: 1,
+      tripAmount: 100,
+      category: "food",
+      paidByMemberId: "a",
+      involvedMemberIds: ["a", "b"],
+      splitMode: "equal",
+      splitShares: null,
+      createdAt: "2026-03-25T10:00:00.000Z"
+    }
+  ];
+
+  const members: Member[] = [
+    { id: "a", displayName: "Alice" },
+    { id: "b", displayName: "Bob" },
+    { id: "c", displayName: "Charlie" } // Not involved in any expense
+  ];
+
+  const transfers = settleEarlyDeparture(expenses, members, "c", "USD");
+  expect(transfers.length).toBe(0);
+});
+
+test("settleTrip with earlySettlements zeros out departed member and adjusts remaining balances", () => {
+  // Phase 1: Expense before departure — A pays $100 split among A, B, C, D
+  const expense1: Expense = {
+    id: "1",
+    tripId: "trip",
+    expenseDate: "2026-03-25",
+    amount: 100,
+    currencyCode: "USD",
+    conversionRateToTripCurrency: 1,
+    tripAmount: 100,
+    category: "food",
+    paidByMemberId: "a",
+    involvedMemberIds: ["a", "b", "c", "d"],
+    splitMode: "equal",
+    splitShares: null,
+    createdAt: "2026-03-25T10:00:00.000Z"
+  };
+
+  // Phase 2: Expense after D departed — B pays $90 split among A, B, C
+  const expense2: Expense = {
+    id: "2",
+    tripId: "trip",
+    expenseDate: "2026-03-26",
+    amount: 90,
+    currencyCode: "USD",
+    conversionRateToTripCurrency: 1,
+    tripAmount: 90,
+    category: "transport",
+    paidByMemberId: "b",
+    involvedMemberIds: ["a", "b", "c"],
+    splitMode: "equal",
+    splitShares: null,
+    createdAt: "2026-03-26T10:00:00.000Z"
+  };
+
+  // D departed and paid A $25 (their only early settlement transfer)
+  const earlySettlements: EarlySettlement[] = [
+    { fromMemberId: "d", toMemberId: "a", amount: 25 }
+  ];
+
+  const members: Member[] = [
+    { id: "a", displayName: "Alice" },
+    { id: "b", displayName: "Bob" },
+    { id: "c", displayName: "Charlie" },
+    { id: "d", displayName: "Dave", status: "departed" }
+  ];
+
+  const settlement = settleTrip(
+    [expense1, expense2],
+    members,
+    [],
+    "USD",
+    earlySettlements
+  );
+
+  // D should have net ~$0 after early settlement adjustment
+  const dave = settlement.balances.find(
+    (b) => b.entity.type === "member" && b.entity.memberId === "d"
+  );
+  expect(dave).toBeDefined();
+  expect(Math.abs(dave!.net)).toBeLessThan(0.02);
+
+  // No transfers should involve D
+  for (const transfer of settlement.transfers) {
+    if (transfer.fromEntity.type === "member") {
+      expect(transfer.fromEntity.memberId).not.toBe("d");
+    }
+    if (transfer.toEntity.type === "member") {
+      expect(transfer.toEntity.memberId).not.toBe("d");
+    }
+  }
+
+  // Verify remaining members' math is correct
+  // From expenses: A paid $100, owes $25+$30=$55 → net +$45
+  //                B paid $90, owes $25+$30=$55 → net +$35
+  //                C paid $0, owes $25+$30=$55 → net -$55
+  // After early settlement: A received $25 from D → A: +$45-$25=+$20, B: +$35, C: -$55
+  // Transfers: C pays B $35, C pays A $20
+  expect(settlement.transfers.length).toBe(2);
+
+  const totalFromC = settlement.transfers
+    .filter((t) => t.fromEntity.type === "member" && t.fromEntity.memberId === "c")
+    .reduce((sum, t) => sum + t.amount, 0);
+  expect(totalFromC).toBe(55);
+});
+
+test("settleEarlyDeparture handles creditor departing (member who paid more than they owe)", () => {
+  // A pays $200 split equally among A, B, C
+  const expenses: Expense[] = [
+    {
+      id: "1",
+      tripId: "trip",
+      expenseDate: "2026-03-25",
+      amount: 200,
+      currencyCode: "USD",
+      conversionRateToTripCurrency: 1,
+      tripAmount: 200,
+      category: "lodging",
+      paidByMemberId: "a",
+      involvedMemberIds: ["a", "b", "c"],
+      splitMode: "equal",
+      splitShares: null,
+      createdAt: "2026-03-25T10:00:00.000Z"
+    }
+  ];
+
+  const members: Member[] = [
+    { id: "a", displayName: "Alice" },
+    { id: "b", displayName: "Bob" },
+    { id: "c", displayName: "Charlie" }
+  ];
+
+  // A departs as a creditor: paid $200, owes ~$66.67, net ~+$133.33
+  const transfers = settleEarlyDeparture(expenses, members, "a", "USD");
+
+  // B and C each owe A ~$66.67
+  expect(transfers.length).toBe(2);
+  for (const t of transfers) {
+    expect(t.toEntity).toEqual({ type: "member", memberId: "a" });
+    expect(t.amount).toBeCloseTo(66.67, 1);
   }
 });

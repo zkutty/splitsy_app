@@ -417,6 +417,10 @@ export default function TripDetailsScreen() {
       return member.removedAt ? `Removed on ${member.removedAt.slice(0, 10)}` : "Removed from this trip";
     }
 
+    if ((member.status ?? "active") === "departed") {
+      return member.departedAt ? `Departed and settled on ${member.departedAt.slice(0, 10)}` : "Departed early — settled up";
+    }
+
     if (member.isLinked) {
       return member.email ? `Linked account · ${member.email}` : "Linked account";
     }
@@ -1077,7 +1081,7 @@ export default function TripDetailsScreen() {
 
           <View ref={sectionRefs.payments} collapsable={false}>
           {trip.status === "active" ? (
-            <SectionCard title="Repayments" description="SplitTrip minimizes the number of transfers needed to settle up.">
+            <SectionCard title="Repayments" description="SplitTrip minimizes the number of transfers needed to settle up. Early departure settlements are handled separately and factored into the final settlement.">
               {settlement?.transfers.length ? (
                 settlement.transfers.map((transfer, index) => {
                   return (
@@ -1142,7 +1146,7 @@ export default function TripDetailsScreen() {
             description={
               mayManageTrip
                 ? isTripActive
-                  ? "Invite everyone who should be included in balances and settlements."
+                  ? "Invite everyone who should be included in balances and settlements. If someone leaves early, you can mark them as departed so they settle up and stop being included in future expenses."
                   : "Member management is locked after completion."
                 : "You can see everyone on the trip. Only the trip creator can manage membership."
             }

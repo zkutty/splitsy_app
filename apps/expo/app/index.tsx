@@ -32,7 +32,7 @@ const STEPS = [
   {
     number: "4",
     heading: "Settle up",
-    body: "One tap to see who owes whom. SplitTrip calculates the minimum number of payments.",
+    body: "One tap to see who owes whom. SplitTrip calculates the minimum number of payments. Someone leaving early? They can settle up and go — the rest of the trip adjusts automatically.",
   },
 ] as const;
 
@@ -51,6 +51,11 @@ const FEATURES = [
     accent: "purple" as const,
     heading: "Minimum repayments",
     body: "When the trip ends, SplitTrip reduces all debts to the fewest possible transfers so nobody chases five people for $12.",
+  },
+  {
+    accent: "primary" as const,
+    heading: "Early departures",
+    body: "Someone leaving the trip early? They can settle their share and be done. Future expenses won't involve them, and the final settlement adjusts automatically.",
   },
 ] as const;
 

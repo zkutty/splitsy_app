@@ -1,7 +1,8 @@
 export type CurrencyCode = string;
 export type TripStatus = "active" | "completed" | "settled";
 export type SettlementTransferStatus = "pending" | "paid" | "confirmed";
-export type MemberStatus = "active" | "removed";
+export type MemberStatus = "active" | "removed" | "departed";
+export type SettlementType = "trip_completion" | "early_departure";
 export type PaymentMethodType = "venmo" | "paypal" | "cashapp";
 export type SplitMode = "equal" | "byAmount" | "byPercentage";
 
@@ -27,6 +28,7 @@ export type Member = {
   isLinked?: boolean;
   status?: MemberStatus;
   removedAt?: string | null;
+  departedAt?: string | null;
   groupId?: string | null;
 };
 
@@ -143,11 +145,19 @@ export type TripSettlementTransfer = {
   fromDisplayName: string;
   toDisplayName: string;
   status: SettlementTransferStatus;
+  settlementType: SettlementType;
+  departedMemberId?: string | null;
   paidMarkedAt?: string | null;
   paidMarkedByUserId?: string | null;
   confirmedAt?: string | null;
   confirmedByUserId?: string | null;
   createdAt: string;
+};
+
+export type EarlySettlement = {
+  fromMemberId: string;
+  toMemberId: string;
+  amount: number;
 };
 
 export type TripSettlement = {
@@ -163,6 +173,8 @@ export type ActivityEventType =
   | 'expense_deleted'
   | 'member_added'
   | 'member_removed'
+  | 'member_departed'
+  | 'member_rejoined'
   | 'member_claimed'
   | 'settlement_paid'
   | 'settlement_confirmed'

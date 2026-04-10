@@ -1,4 +1,4 @@
-import type { Expense, ExpenseDraft, MemberGroup, PaymentMethodType, SettlementTransfer, SplitMode, Trip, TripActivityEvent, TripSettlementTransfer, UserProfile } from "@splitsy/domain";
+import type { EarlySettlement, Expense, ExpenseDraft, MemberGroup, PaymentMethodType, SettlementTransfer, SplitMode, Trip, TripActivityEvent, TripSettlementTransfer, UserProfile } from "@splitsy/domain";
 import { SAMPLE_EXPENSES, SAMPLE_TRIP, SAMPLE_USER } from "@splitsy/domain";
 
 import { createSupabaseClient, hasSupabaseConfig } from "./supabase";
@@ -35,6 +35,13 @@ export type TripsRepository = {
   }) => Promise<Trip>;
   addTripMember: (tripId: string, member: UserProfile) => Promise<Trip>;
   removeTripMember: (tripId: string, memberId: string) => Promise<Trip>;
+  departTripMember: (
+    tripId: string,
+    memberId: string,
+    transfers: SettlementTransfer[]
+  ) => Promise<{ trip: Trip; transfers: TripSettlementTransfer[] }>;
+  rejoinTripMember: (tripId: string, memberId: string) => Promise<Trip>;
+  getEarlySettlementsForTrip: (tripId: string) => Promise<EarlySettlement[]>;
   updatePaymentMethod: (type: PaymentMethodType | null, handle: string | null) => Promise<void>;
   getPaymentMethod: () => Promise<{ type: PaymentMethodType | null; handle: string | null }>;
   getPaymentMethodForUser: (userId: string) => Promise<{ type: PaymentMethodType | null; handle: string | null }>;
@@ -339,6 +346,75 @@ const demoRepository = (): TripsRepository => {
 
       return updatedTrip;
     },
+    departTripMember: async (tripId, memberId, transfers) => {
+      const now = new Date().toISOString();
+
+      trips = trips.map((trip) =>
+        trip.id === tripId
+          ? {
+              ...trip,
+              members: trip.members.map((member) =>
+                member.id === memberId
+                  ? { ...member, status: "departed", departedAt: now }
+                  : member
+              )
+            }
+          : trip
+      );
+
+      const trip = trips.find((t) => t.id === tripId);
+      if (!trip) throw new Error("Trip not found");
+
+      const persistedTransfers: TripSettlementTransfer[] = transfers.map((transfer, index) => ({
+        id: `dep_transfer_${memberId}_${index + 1}`,
+        tripId,
+        ...transfer,
+        status: "pending" as const,
+        settlementType: "early_departure" as const,
+        departedMemberId: memberId,
+        paidMarkedAt: null,
+        paidMarkedByUserId: null,
+        confirmedAt: null,
+        confirmedByUserId: null,
+        createdAt: now
+      }));
+
+      settlementTransfers = [...settlementTransfers, ...persistedTransfers];
+
+      return { trip, transfers: persistedTransfers };
+    },
+    rejoinTripMember: async (tripId, memberId) => {
+      // Remove early departure transfers for this member
+      settlementTransfers = settlementTransfers.filter(
+        (t) => !(t.tripId === tripId && t.departedMemberId === memberId)
+      );
+
+      trips = trips.map((trip) =>
+        trip.id === tripId
+          ? {
+              ...trip,
+              members: trip.members.map((member) =>
+                member.id === memberId
+                  ? { ...member, status: "active", departedAt: null }
+                  : member
+              )
+            }
+          : trip
+      );
+
+      const updatedTrip = trips.find((t) => t.id === tripId);
+      if (!updatedTrip) throw new Error("Trip not found");
+      return updatedTrip;
+    },
+    getEarlySettlementsForTrip: async (tripId) => {
+      return settlementTransfers
+        .filter((t) => t.tripId === tripId && t.settlementType === "early_departure")
+        .map((t) => ({
+          fromMemberId: t.fromEntity.type === "member" ? t.fromEntity.memberId : "",
+          toMemberId: t.toEntity.type === "member" ? t.toEntity.memberId : "",
+          amount: t.amount
+        }));
+    },
     updatePaymentMethod: async (type, handle) => {
       demoPaymentMethod = { type, handle };
     },
@@ -525,6 +601,7 @@ const supabaseRepository = (): TripsRepository => {
       isLinked: Boolean(memberRow.user_id),
       status: memberRow.status ?? "active",
       removedAt: memberRow.removed_at ?? null,
+      departedAt: memberRow.departed_at ?? null,
       groupId: memberRow.group_id ?? null
     }));
 
@@ -559,7 +636,7 @@ const supabaseRepository = (): TripsRepository => {
     const { data, error } = await supabase
       .from("trips")
       .select(
-        "id, created_by_user_id, status, name, destination, trip_currency_code, start_date, end_date, completed_at, completed_by_user_id, settled_at, trip_members(id, user_id, display_name, avatar_url, email, claimed_at, status, removed_at, group_id), trip_groups(id, name)"
+        "id, created_by_user_id, status, name, destination, trip_currency_code, start_date, end_date, completed_at, completed_by_user_id, settled_at, trip_members(id, user_id, display_name, avatar_url, email, claimed_at, status, removed_at, departed_at, group_id), trip_groups(id, name)"
       )
       .eq("id", tripId)
       .single();
@@ -590,6 +667,8 @@ const supabaseRepository = (): TripsRepository => {
       fromDisplayName: row.from_display_name ?? 'Unknown',
       toDisplayName: row.to_display_name ?? 'Unknown',
       status: row.status,
+      settlementType: row.settlement_type ?? 'trip_completion',
+      departedMemberId: row.departed_member_id ?? null,
       paidMarkedAt: row.paid_marked_at ?? null,
       paidMarkedByUserId: row.paid_marked_by_user_id ?? null,
       confirmedAt: row.confirmed_at ?? null,
@@ -649,7 +728,7 @@ const supabaseRepository = (): TripsRepository => {
       const { data, error } = await supabase
         .from("trips")
         .select(
-          "id, created_by_user_id, status, name, destination, trip_currency_code, start_date, end_date, completed_at, completed_by_user_id, settled_at, trip_members(id, user_id, display_name, avatar_url, email, claimed_at, status, removed_at, group_id), trip_groups(id, name), user_trip_preferences!left(is_archived)"
+          "id, created_by_user_id, status, name, destination, trip_currency_code, start_date, end_date, completed_at, completed_by_user_id, settled_at, trip_members(id, user_id, display_name, avatar_url, email, claimed_at, status, removed_at, departed_at, group_id), trip_groups(id, name), user_trip_preferences!left(is_archived)"
         )
         .order("start_date", { ascending: false });
 
@@ -706,7 +785,7 @@ const supabaseRepository = (): TripsRepository => {
       const { data, error } = await supabase
         .from("trip_settlement_transfers")
         .select(
-          "id, trip_id, from_member_id, from_group_id, to_member_id, to_group_id, amount, currency_code, status, paid_marked_at, paid_marked_by_user_id, confirmed_at, confirmed_by_user_id, created_at"
+          "id, trip_id, from_member_id, from_group_id, to_member_id, to_group_id, amount, currency_code, status, settlement_type, departed_member_id, paid_marked_at, paid_marked_by_user_id, confirmed_at, confirmed_by_user_id, created_at"
         )
         .eq("trip_id", tripId)
         .order("created_at", { ascending: true });
@@ -892,7 +971,7 @@ const supabaseRepository = (): TripsRepository => {
       const { data: transfersData, error: transfersError } = await supabase
         .from("trip_settlement_transfers")
         .select(
-          "id, trip_id, from_member_id, from_group_id, to_member_id, to_group_id, amount, currency_code, status, paid_marked_at, paid_marked_by_user_id, confirmed_at, confirmed_by_user_id, created_at"
+          "id, trip_id, from_member_id, from_group_id, to_member_id, to_group_id, amount, currency_code, status, settlement_type, departed_member_id, paid_marked_at, paid_marked_by_user_id, confirmed_at, confirmed_by_user_id, created_at"
         )
         .eq("trip_id", tripId)
         .order("created_at", { ascending: true });
@@ -1082,6 +1161,89 @@ const supabaseRepository = (): TripsRepository => {
       }
 
       return fetchTrip(tripId);
+    },
+    departTripMember: async (tripId, memberId, transfers) => {
+      const { error: departError } = await supabase.rpc("depart_trip_member", {
+        target_trip_id: tripId,
+        target_member_id: memberId,
+        settlement_transfers: transfers.map((transfer) => ({
+          fromEntity: transfer.fromEntity,
+          toEntity: transfer.toEntity,
+          amount: transfer.amount,
+          currencyCode: transfer.currencyCode
+        }))
+      });
+
+      if (departError) {
+        throw departError;
+      }
+
+      const trip = await fetchTrip(tripId);
+
+      const { data: transfersData, error: transfersError } = await supabase
+        .from("trip_settlement_transfers")
+        .select(
+          "id, trip_id, from_member_id, from_group_id, to_member_id, to_group_id, amount, currency_code, status, settlement_type, departed_member_id, paid_marked_at, paid_marked_by_user_id, confirmed_at, confirmed_by_user_id, created_at"
+        )
+        .eq("trip_id", tripId)
+        .eq("departed_member_id", memberId)
+        .order("created_at", { ascending: true });
+
+      if (transfersError) {
+        throw transfersError;
+      }
+
+      const persistedTransfers = (transfersData ?? []).map((row: any) => {
+        let fromDisplayName = 'Unknown';
+        let toDisplayName = 'Unknown';
+
+        if (row.from_member_id) {
+          const member = trip.members.find((m) => m.id === row.from_member_id);
+          fromDisplayName = member?.displayName ?? 'Unknown';
+        }
+
+        if (row.to_member_id) {
+          const member = trip.members.find((m) => m.id === row.to_member_id);
+          toDisplayName = member?.displayName ?? 'Unknown';
+        }
+
+        return mapSettlementTransfer({
+          ...row,
+          from_display_name: fromDisplayName,
+          to_display_name: toDisplayName
+        });
+      });
+
+      return { trip, transfers: persistedTransfers };
+    },
+    rejoinTripMember: async (tripId, memberId) => {
+      const { error } = await supabase.rpc("rejoin_trip_member", {
+        target_trip_id: tripId,
+        target_member_id: memberId
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      return fetchTrip(tripId);
+    },
+    getEarlySettlementsForTrip: async (tripId) => {
+      const { data, error } = await supabase
+        .from("trip_settlement_transfers")
+        .select("from_member_id, to_member_id, amount")
+        .eq("trip_id", tripId)
+        .eq("settlement_type", "early_departure");
+
+      if (error) {
+        throw error;
+      }
+
+      return (data ?? []).map((row: any) => ({
+        fromMemberId: row.from_member_id,
+        toMemberId: row.to_member_id,
+        amount: Number(row.amount)
+      }));
     },
     updatePaymentMethod: async (type, handle) => {
       const userId = await getCurrentUserId();
