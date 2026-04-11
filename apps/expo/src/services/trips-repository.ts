@@ -168,11 +168,13 @@ const demoRepository = (): TripsRepository => {
 
       const now = new Date().toISOString();
       const nextStatus = transfers.length ? "completed" : "settled";
-      const persistedTransfers = transfers.map((transfer, index) => ({
+      const persistedTransfers: TripSettlementTransfer[] = transfers.map((transfer, index) => ({
         id: `transfer_${tripId}_${index + 1}`,
         tripId,
         ...transfer,
         status: "pending" as const,
+        settlementType: "trip_completion" as const,
+        departedMemberId: null,
         paidMarkedAt: null,
         paidMarkedByUserId: null,
         confirmedAt: null,
@@ -636,7 +638,7 @@ const supabaseRepository = (): TripsRepository => {
     const { data, error } = await supabase
       .from("trips")
       .select(
-        "id, created_by_user_id, status, name, destination, trip_currency_code, start_date, end_date, completed_at, completed_by_user_id, settled_at, trip_members(id, user_id, display_name, avatar_url, email, claimed_at, status, removed_at, departed_at, group_id), trip_groups(id, name)"
+        "id, created_by_user_id, status, name, destination, trip_currency_code, start_date, end_date, completed_at, completed_by_user_id, settled_at, trip_members(id, user_id, display_name, avatar_url, email, claimed_at, status, removed_at, group_id), trip_groups(id, name)"
       )
       .eq("id", tripId)
       .single();
@@ -728,7 +730,7 @@ const supabaseRepository = (): TripsRepository => {
       const { data, error } = await supabase
         .from("trips")
         .select(
-          "id, created_by_user_id, status, name, destination, trip_currency_code, start_date, end_date, completed_at, completed_by_user_id, settled_at, trip_members(id, user_id, display_name, avatar_url, email, claimed_at, status, removed_at, departed_at, group_id), trip_groups(id, name), user_trip_preferences!left(is_archived)"
+          "id, created_by_user_id, status, name, destination, trip_currency_code, start_date, end_date, completed_at, completed_by_user_id, settled_at, trip_members(id, user_id, display_name, avatar_url, email, claimed_at, status, removed_at, group_id), trip_groups(id, name), user_trip_preferences!left(is_archived)"
         )
         .order("start_date", { ascending: false });
 
@@ -785,7 +787,7 @@ const supabaseRepository = (): TripsRepository => {
       const { data, error } = await supabase
         .from("trip_settlement_transfers")
         .select(
-          "id, trip_id, from_member_id, from_group_id, to_member_id, to_group_id, amount, currency_code, status, settlement_type, departed_member_id, paid_marked_at, paid_marked_by_user_id, confirmed_at, confirmed_by_user_id, created_at"
+          "id, trip_id, from_member_id, from_group_id, to_member_id, to_group_id, amount, currency_code, status, paid_marked_at, paid_marked_by_user_id, confirmed_at, confirmed_by_user_id, created_at"
         )
         .eq("trip_id", tripId)
         .order("created_at", { ascending: true });
@@ -971,7 +973,7 @@ const supabaseRepository = (): TripsRepository => {
       const { data: transfersData, error: transfersError } = await supabase
         .from("trip_settlement_transfers")
         .select(
-          "id, trip_id, from_member_id, from_group_id, to_member_id, to_group_id, amount, currency_code, status, settlement_type, departed_member_id, paid_marked_at, paid_marked_by_user_id, confirmed_at, confirmed_by_user_id, created_at"
+          "id, trip_id, from_member_id, from_group_id, to_member_id, to_group_id, amount, currency_code, status, paid_marked_at, paid_marked_by_user_id, confirmed_at, confirmed_by_user_id, created_at"
         )
         .eq("trip_id", tripId)
         .order("created_at", { ascending: true });
@@ -1183,7 +1185,7 @@ const supabaseRepository = (): TripsRepository => {
       const { data: transfersData, error: transfersError } = await supabase
         .from("trip_settlement_transfers")
         .select(
-          "id, trip_id, from_member_id, from_group_id, to_member_id, to_group_id, amount, currency_code, status, settlement_type, departed_member_id, paid_marked_at, paid_marked_by_user_id, confirmed_at, confirmed_by_user_id, created_at"
+          "id, trip_id, from_member_id, from_group_id, to_member_id, to_group_id, amount, currency_code, status, paid_marked_at, paid_marked_by_user_id, confirmed_at, confirmed_by_user_id, created_at"
         )
         .eq("trip_id", tripId)
         .eq("departed_member_id", memberId)
@@ -1229,21 +1231,27 @@ const supabaseRepository = (): TripsRepository => {
       return fetchTrip(tripId);
     },
     getEarlySettlementsForTrip: async (tripId) => {
-      const { data, error } = await supabase
-        .from("trip_settlement_transfers")
-        .select("from_member_id, to_member_id, amount")
-        .eq("trip_id", tripId)
-        .eq("settlement_type", "early_departure");
+      try {
+        const { data, error } = await supabase
+          .from("trip_settlement_transfers")
+          .select("from_member_id, to_member_id, amount")
+          .eq("trip_id", tripId)
+          .eq("settlement_type", "early_departure");
 
-      if (error) {
-        throw error;
+        if (error) {
+          // Column may not exist if migration hasn't been applied yet
+          return [];
+        }
+
+        return (data ?? []).map((row: any) => ({
+          fromMemberId: row.from_member_id,
+          toMemberId: row.to_member_id,
+          amount: Number(row.amount)
+        }));
+      } catch {
+        // Migration not applied yet — no early departures to return
+        return [];
       }
-
-      return (data ?? []).map((row: any) => ({
-        fromMemberId: row.from_member_id,
-        toMemberId: row.to_member_id,
-        amount: Number(row.amount)
-      }));
     },
     updatePaymentMethod: async (type, handle) => {
       const userId = await getCurrentUserId();
