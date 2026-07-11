@@ -8,11 +8,25 @@ export type AddExpenseInput = ExpenseDraft & {
   tripAmount: number;
 };
 
+export type TripInvite = {
+  id: string;
+  tripId: string;
+  token: string;
+  inviteType: "open_link" | "email_claim";
+  status: "pending" | "accepted" | "revoked" | "expired";
+  maxUses: number | null;
+  useCount: number;
+  expiresAt: string;
+  createdAt: string;
+};
+
 export type TripsRepository = {
   ensureProfile: (profile: UserProfile) => Promise<void>;
   claimMembershipsForCurrentUser: () => Promise<void>;
-  createTripInvite: (tripId: string) => Promise<string>;
+  createTripInvite: (tripId: string, maxUses?: number | null) => Promise<string>;
   acceptTripInvite: (token: string) => Promise<string>;
+  listTripInvites: (tripId: string) => Promise<TripInvite[]>;
+  revokeTripInvite: (inviteId: string) => Promise<void>;
   listTrips: () => Promise<Trip[]>;
   listExpenses: (tripId: string) => Promise<Expense[]>;
   listSettlementTransfers: (tripId: string) => Promise<TripSettlementTransfer[]>;
@@ -59,24 +73,52 @@ const demoRepository = (): TripsRepository => {
   let trips = [SAMPLE_TRIP];
   let expenses = [...SAMPLE_EXPENSES];
   let settlementTransfers: TripSettlementTransfer[] = [];
-  const invites = new Map<string, string>();
+  let demoInvites: TripInvite[] = [];
   let demoPaymentMethod: { type: PaymentMethodType | null; handle: string | null } = { type: null, handle: null };
   let groups: MemberGroup[] = [];
 
   return {
     ensureProfile: async () => undefined,
     claimMembershipsForCurrentUser: async () => undefined,
-    createTripInvite: async (tripId) => {
+    createTripInvite: async (tripId, maxUses) => {
       const token = `demo_invite_${tripId}_${Date.now()}`;
-      invites.set(token, tripId);
+      demoInvites = [
+        {
+          id: token,
+          tripId,
+          token,
+          inviteType: "open_link",
+          status: "pending",
+          maxUses: maxUses ?? null,
+          useCount: 0,
+          expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          createdAt: new Date().toISOString()
+        },
+        ...demoInvites
+      ];
       return token;
     },
+    listTripInvites: async (tripId) => demoInvites.filter((invite) => invite.tripId === tripId),
+    revokeTripInvite: async (inviteId) => {
+      demoInvites = demoInvites.map((invite) =>
+        invite.id === inviteId ? { ...invite, status: "revoked" } : invite
+      );
+    },
     acceptTripInvite: async (token) => {
-      const tripId = invites.get(token);
+      const invite = demoInvites.find((item) => item.token === token);
+      const tripId = invite?.tripId;
 
-      if (!tripId) {
+      if (!tripId || invite?.status !== "pending") {
         throw new Error("Invite link is invalid or has expired.");
       }
+
+      if (invite.maxUses != null && invite.useCount >= invite.maxUses) {
+        throw new Error("This invite link has reached its maximum number of uses.");
+      }
+
+      demoInvites = demoInvites.map((item) =>
+        item.token === token ? { ...item, useCount: item.useCount + 1 } : item
+      );
 
       trips = trips.map((trip) =>
         trip.id === tripId && !trip.members.some((member) => member.userId === SAMPLE_USER.id)
@@ -702,9 +744,10 @@ const supabaseRepository = (): TripsRepository => {
         throw error;
       }
     },
-    createTripInvite: async (tripId) => {
+    createTripInvite: async (tripId, maxUses) => {
       const { data, error } = await supabase.rpc("create_trip_invite", {
-        target_trip_id: tripId
+        target_trip_id: tripId,
+        invite_max_uses: maxUses ?? null
       });
 
       if (error) {
@@ -712,6 +755,38 @@ const supabaseRepository = (): TripsRepository => {
       }
 
       return data as string;
+    },
+    listTripInvites: async (tripId) => {
+      const { data, error } = await supabase
+        .from("trip_invites")
+        .select("id, trip_id, token, invite_type, status, max_uses, use_count, expires_at, created_at")
+        .eq("trip_id", tripId)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        throw error;
+      }
+
+      return (data ?? []).map((row: any) => ({
+        id: row.id,
+        tripId: row.trip_id,
+        token: row.token,
+        inviteType: row.invite_type,
+        status: row.status,
+        maxUses: row.max_uses ?? null,
+        useCount: row.use_count ?? 0,
+        expiresAt: row.expires_at,
+        createdAt: row.created_at
+      }));
+    },
+    revokeTripInvite: async (inviteId) => {
+      const { error } = await supabase.rpc("revoke_trip_invite", {
+        target_invite_id: inviteId
+      });
+
+      if (error) {
+        throw error;
+      }
     },
     acceptTripInvite: async (token) => {
       const { data, error } = await supabase.rpc("accept_trip_invite", {
@@ -1277,19 +1352,29 @@ const supabaseRepository = (): TripsRepository => {
       };
     },
     getPaymentMethodForUser: async (userId) => {
-      const { data, error } = await supabase
-        .from("users")
-        .select("payment_method_type, payment_method_handle")
-        .eq("id", userId)
-        .single();
+      // Uses a SECURITY DEFINER RPC rather than a direct table select: the
+      // users table's RLS policy only allows reading your own row, so a
+      // debtor looking up a co-member's payment handle for a settle-up deep
+      // link would otherwise get 0 rows back. The RPC checks that the
+      // caller shares a trip with the target user before returning
+      // payment_method_type/payment_method_handle. See
+      // supabase/migrations/0017_trip_member_payment_method_visibility.sql.
+      const { data, error } = await supabase.rpc("get_trip_member_payment_method", {
+        target_user_id: userId
+      });
 
       if (error) {
         throw error;
       }
 
+      const row = (Array.isArray(data) ? data[0] : data) as
+        | { payment_method_type: string | null; payment_method_handle: string | null }
+        | null
+        | undefined;
+
       return {
-        type: (data?.payment_method_type as PaymentMethodType | null) ?? null,
-        handle: (data?.payment_method_handle as string | null) ?? null
+        type: (row?.payment_method_type as PaymentMethodType | null) ?? null,
+        handle: (row?.payment_method_handle as string | null) ?? null
       };
     },
     createGroup: async (tripId, name) => {
