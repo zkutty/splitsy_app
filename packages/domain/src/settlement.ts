@@ -8,7 +8,7 @@ import type {
   SettlementTransfer,
   TripSettlement
 } from "./domain";
-import { roundCurrency } from "./money";
+import { getCurrencyMinorUnitDigits, roundCurrency } from "./money";
 
 const MIN_TRANSFER = 0.01;
 
@@ -20,11 +20,58 @@ type IndividualBalance = {
 };
 
 /**
+ * Split `totalAmount` equally across `memberIds` using the largest-remainder
+ * method so the shares always sum EXACTLY to `totalAmount` — independent
+ * per-share rounding (e.g. roundCurrency(100 / 3) three times) can lose or
+ * gain a minor unit versus the original total for indivisible amounts.
+ *
+ * The distribution is done in the currency's minor units (cents for USD,
+ * whole units for JPY, mils for BHD, etc.) so leftover remainder is
+ * distributed as whole minor units, never fractional ones. Any leftover
+ * minor units are assigned deterministically to the members whose ids sort
+ * first, so the same input always produces the same output.
+ *
+ * Throws if `memberIds` is empty — callers must guard against splitting an
+ * expense across zero members rather than dividing by zero.
+ */
+export const distributeEqualShares = (
+  totalAmount: number,
+  memberIds: string[],
+  currencyCode?: string | null
+): Map<string, number> => {
+  if (memberIds.length === 0) {
+    throw new Error("Cannot split an expense across zero involved members.");
+  }
+
+  const digits = getCurrencyMinorUnitDigits(currencyCode);
+  const factor = Math.pow(10, digits);
+  const totalMinorUnits = Math.round(totalAmount * factor + Number.EPSILON);
+  const memberCount = memberIds.length;
+  const baseMinorUnits = Math.floor(totalMinorUnits / memberCount);
+  const remainderMinorUnits = totalMinorUnits - baseMinorUnits * memberCount;
+
+  // Deterministic leftover assignment: sort member ids so the outcome
+  // doesn't depend on iteration/insertion order, then give the first
+  // `remainderMinorUnits` members one extra minor unit each.
+  const sortedIds = [...memberIds].sort();
+  const extraRecipients = new Set(sortedIds.slice(0, remainderMinorUnits));
+
+  const shares = new Map<string, number>();
+  for (const memberId of memberIds) {
+    const minorUnits = baseMinorUnits + (extraRecipients.has(memberId) ? 1 : 0);
+    shares.set(memberId, minorUnits / factor);
+  }
+
+  return shares;
+};
+
+/**
  * Compute individual member balances from expenses.
  */
 const computeIndividualBalances = (
   expenses: Expense[],
-  members: Member[]
+  members: Member[],
+  currencyCode?: string | null
 ): Map<string, IndividualBalance> => {
   const individualBalances = new Map<string, IndividualBalance>();
 
@@ -44,7 +91,15 @@ const computeIndividualBalances = (
       continue;
     }
 
-    payer.paid = roundCurrency(payer.paid + expense.tripAmount);
+    payer.paid = roundCurrency(payer.paid + expense.tripAmount, currencyCode);
+
+    // Pre-compute the equal-split shares once per expense (largest-remainder
+    // method) so they sum exactly to tripAmount. Guarded against an empty
+    // involved-member list — an expense with no involved members simply
+    // contributes no `owed` share to anyone rather than dividing by zero.
+    const equalShares = expense.involvedMemberIds.length > 0
+      ? distributeEqualShares(expense.tripAmount, expense.involvedMemberIds, currencyCode)
+      : null;
 
     for (const memberId of expense.involvedMemberIds) {
       const memberBalance = individualBalances.get(memberId);
@@ -57,21 +112,21 @@ const computeIndividualBalances = (
 
       if (expense.splitMode === "byAmount" && expense.splitShares?.[memberId] != null) {
         // Share is stored in original currency — convert to trip currency
-        share = roundCurrency(expense.splitShares[memberId] * expense.conversionRateToTripCurrency);
+        share = roundCurrency(expense.splitShares[memberId] * expense.conversionRateToTripCurrency, currencyCode);
       } else if (expense.splitMode === "byPercentage" && expense.splitShares?.[memberId] != null) {
-        share = roundCurrency(expense.tripAmount * expense.splitShares[memberId] / 100);
+        share = roundCurrency(expense.tripAmount * expense.splitShares[memberId] / 100, currencyCode);
       } else {
         // Default: equal split
-        share = roundCurrency(expense.tripAmount / expense.involvedMemberIds.length);
+        share = equalShares?.get(memberId) ?? 0;
       }
 
-      memberBalance.owed = roundCurrency(memberBalance.owed + share);
+      memberBalance.owed = roundCurrency(memberBalance.owed + share, currencyCode);
     }
   }
 
   // Calculate net for each individual
   for (const balance of individualBalances.values()) {
-    balance.net = roundCurrency(balance.paid - balance.owed);
+    balance.net = roundCurrency(balance.paid - balance.owed, currencyCode);
   }
 
   return individualBalances;
@@ -85,7 +140,7 @@ export const settleTrip = (
   earlySettlements?: EarlySettlement[]
 ): TripSettlement => {
   // Step 1: Calculate individual member balances
-  const individualBalances = computeIndividualBalances(expenses, members);
+  const individualBalances = computeIndividualBalances(expenses, members, currencyCode);
 
   // Step 1b: Apply early settlement adjustments.
   // Each early settlement represents money already transferred between two members.
@@ -97,14 +152,14 @@ export const settleTrip = (
 
       if (fromBalance) {
         // The payer already sent this amount out — credit their balance
-        fromBalance.paid = roundCurrency(fromBalance.paid + es.amount);
-        fromBalance.net = roundCurrency(fromBalance.paid - fromBalance.owed);
+        fromBalance.paid = roundCurrency(fromBalance.paid + es.amount, currencyCode);
+        fromBalance.net = roundCurrency(fromBalance.paid - fromBalance.owed, currencyCode);
       }
 
       if (toBalance) {
         // The recipient already received this amount — debit their balance
-        toBalance.owed = roundCurrency(toBalance.owed + es.amount);
-        toBalance.net = roundCurrency(toBalance.paid - toBalance.owed);
+        toBalance.owed = roundCurrency(toBalance.owed + es.amount, currencyCode);
+        toBalance.net = roundCurrency(toBalance.paid - toBalance.owed, currencyCode);
       }
     }
   }
@@ -155,8 +210,8 @@ export const settleTrip = (
     }
 
     const eb = entityBalances.get(key)!;
-    eb.paid = roundCurrency(eb.paid + individualBalance.paid);
-    eb.owed = roundCurrency(eb.owed + individualBalance.owed);
+    eb.paid = roundCurrency(eb.paid + individualBalance.paid, currencyCode);
+    eb.owed = roundCurrency(eb.owed + individualBalance.owed, currencyCode);
 
     // Store individual member balances for expandable view
     if (eb.isGroup) {
@@ -172,7 +227,7 @@ export const settleTrip = (
 
   // Calculate net for each entity
   for (const balance of entityBalances.values()) {
-    balance.net = roundCurrency(balance.paid - balance.owed);
+    balance.net = roundCurrency(balance.paid - balance.owed, currencyCode);
   }
 
   const normalizedBalances = [...entityBalances.values()];
@@ -214,7 +269,7 @@ export const settleTrip = (
   while (debtorIndex < debtors.length && creditorIndex < creditors.length) {
     const debtor = debtors[debtorIndex];
     const creditor = creditors[creditorIndex];
-    const amount = roundCurrency(Math.min(debtor.amount, creditor.amount));
+    const amount = roundCurrency(Math.min(debtor.amount, creditor.amount), currencyCode);
 
     if (amount >= MIN_TRANSFER) {
       transfers.push({
@@ -227,8 +282,8 @@ export const settleTrip = (
       });
     }
 
-    debtor.amount = roundCurrency(debtor.amount - amount);
-    creditor.amount = roundCurrency(creditor.amount - amount);
+    debtor.amount = roundCurrency(debtor.amount - amount, currencyCode);
+    creditor.amount = roundCurrency(creditor.amount - amount, currencyCode);
 
     if (debtor.amount < MIN_TRANSFER) {
       debtorIndex += 1;
@@ -242,7 +297,10 @@ export const settleTrip = (
   return {
     balances: normalizedBalances,
     transfers,
-    totalTripSpend: roundCurrency(expenses.reduce((sum, expense) => sum + expense.tripAmount, 0)),
+    totalTripSpend: roundCurrency(
+      expenses.reduce((sum, expense) => sum + expense.tripAmount, 0),
+      currencyCode
+    ),
     currencyCode
   };
 };
@@ -258,7 +316,7 @@ export const settleEarlyDeparture = (
   currencyCode: string
 ): SettlementTransfer[] => {
   // Compute balances across all members (no groups — early departure settles at individual level)
-  const individualBalances = computeIndividualBalances(expenses, members);
+  const individualBalances = computeIndividualBalances(expenses, members, currencyCode);
 
   const departingBalance = individualBalances.get(departingMemberId);
   if (!departingBalance || Math.abs(departingBalance.net) < MIN_TRANSFER) {
@@ -295,7 +353,7 @@ export const settleEarlyDeparture = (
   while (debtorIndex < debtors.length && creditorIndex < creditors.length) {
     const debtor = debtors[debtorIndex];
     const creditor = creditors[creditorIndex];
-    const amount = roundCurrency(Math.min(debtor.amount, creditor.amount));
+    const amount = roundCurrency(Math.min(debtor.amount, creditor.amount), currencyCode);
 
     if (amount >= MIN_TRANSFER) {
       const involvesDeparting = debtor.memberId === departingMemberId || creditor.memberId === departingMemberId;
@@ -312,8 +370,8 @@ export const settleEarlyDeparture = (
       }
     }
 
-    debtor.amount = roundCurrency(debtor.amount - amount);
-    creditor.amount = roundCurrency(creditor.amount - amount);
+    debtor.amount = roundCurrency(debtor.amount - amount, currencyCode);
+    creditor.amount = roundCurrency(creditor.amount - amount, currencyCode);
 
     if (debtor.amount < MIN_TRANSFER) {
       debtorIndex += 1;

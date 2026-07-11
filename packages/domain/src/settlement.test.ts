@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 
 import type { EarlySettlement, Expense, Member } from "./domain";
-import { settleEarlyDeparture, settleTrip } from "./settlement";
-import { validateExpenseDraft } from "./validation";
+import { distributeEqualShares, settleEarlyDeparture, settleTrip } from "./settlement";
+import { assertNoDepartedMembersInExpense, validateExpenseDraft } from "./validation";
 
 test("settles equal split expenses into minimized transfers", () => {
   const expenses: Expense[] = [
