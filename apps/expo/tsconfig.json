@@ -3,7 +3,8 @@
   "compilerOptions": {
     "noEmit": true,
     "types": [
-      "expo-router/types"
+      "expo-router/types",
+      "bun"
     ]
   },
   "include": [

@@ -210,11 +210,13 @@ const demoRepository = (): TripsRepository => {
 
       const now = new Date().toISOString();
       const nextStatus = transfers.length ? "completed" : "settled";
-      const persistedTransfers = transfers.map((transfer, index) => ({
+      const persistedTransfers: TripSettlementTransfer[] = transfers.map((transfer, index) => ({
         id: `transfer_${tripId}_${index + 1}`,
         tripId,
         ...transfer,
         status: "pending" as const,
+        settlementType: "trip_completion" as const,
+        departedMemberId: null,
         paidMarkedAt: null,
         paidMarkedByUserId: null,
         confirmedAt: null,

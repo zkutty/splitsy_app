@@ -37,11 +37,14 @@ const ROUTE_META = {
 };
 
 /** Returns true when the request is for an HTML page (not a static asset). */
-function isPageRequest(request) {
+export function isPageRequest(request) {
   const url = new URL(request.url);
-  const ext = url.pathname.split(".").pop();
-  // If there is no file extension, or it is explicitly .html, treat it as a page
-  if (url.pathname === "/" || !ext || ext === url.pathname.slice(1) || ext === "html") {
+  const lastSegment = url.pathname.split("/").pop() || "";
+  const hasExtension = lastSegment.includes(".");
+  // If there is no file extension on the last path segment, or it is
+  // explicitly .html, treat it as a page (e.g. "/", "/trips", "/trips.html")
+  // rather than a static asset (e.g. "/assets/app.js").
+  if (url.pathname === "/" || !hasExtension || lastSegment.endsWith(".html")) {
     const accept = request.headers.get("Accept") || "";
     return accept.includes("text/html");
   }
@@ -49,7 +52,7 @@ function isPageRequest(request) {
 }
 
 /** Replace the content of a single meta/title tag inside an HTML string. */
-function replaceMeta(html, { title, description, url }) {
+export function replaceMeta(html, { title, description, url }) {
   if (title) {
     html = html.replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`);
     html = html.replace(
