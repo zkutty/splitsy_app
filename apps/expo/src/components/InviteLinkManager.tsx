@@ -13,11 +13,10 @@ import { Theme, useAppTheme } from "../ui/theme";
 // ZKU-57: Standalone invite-link management UI (create with an optional use
 // cap, list existing links, copy, and revoke). Extracted as its own
 // component rather than inlined so it can be dropped into any screen that
-// manages a trip's invites. It is NOT wired into apps/expo/app/trip/[tripId].tsx
-// yet — that screen currently has its own inline "create invite link" flow
-// and is owned by a different in-flight change, so final integration
-// (replacing/augmenting that inline flow with this component) is left for a
-// follow-up pass on that screen.
+// manages a trip's invites. As of ZKU-60 it is wired into
+// apps/expo/src/components/MemberManagement.tsx, which is rendered by
+// apps/expo/app/trip/[tripId].tsx — that MemberManagement component owns the
+// invites list/create/revoke state and feeds it into this component's props.
 
 export type InviteLinkManagerProps = {
   invites: TripInvite[];

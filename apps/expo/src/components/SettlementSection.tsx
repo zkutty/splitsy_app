@@ -37,8 +37,8 @@ export type SettlementSectionProps = {
   getPaymentMethodForUser: (userId: string) => Promise<{ type: PaymentMethodType | null; handle: string | null }>;
   onLogPayment: (transfer: SettlementTransfer) => void;
   /** Anchors for the jump-nav bar's "Balances"/"Repayments" chips — kept as two separate scroll targets. */
-  balancesSectionRef: RefObject<View>;
-  paymentsSectionRef: RefObject<View>;
+  balancesSectionRef: RefObject<View | null>;
+  paymentsSectionRef: RefObject<View | null>;
 };
 
 export function SettlementSection({

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import * as Linking from "expo-linking";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 
-import type { Member, MemberGroup, Trip, TripSettlement } from "@splitsy/domain";
+import type { Member, MemberGroup, TripSettlement } from "@splitsy/domain";
 
 import type { TripInvite } from "../services/trips-repository";
 import { InviteLinkManager } from "./InviteLinkManager";
