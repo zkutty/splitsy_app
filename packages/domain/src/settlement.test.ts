@@ -542,3 +542,298 @@ test("settleEarlyDeparture handles creditor departing (member who paid more than
     expect(t.amount).toBeCloseTo(66.67, 1);
   }
 });
+
+// ---------------------------------------------------------------------------
+// ZKU-52: Distribute rounding remainder in equal splits so settlements
+// balance to zero, even for amounts that don't divide evenly.
+// ---------------------------------------------------------------------------
+
+test("distributeEqualShares: $100 split 3 ways sums exactly to $100", () => {
+  const shares = distributeEqualShares(100, ["a", "b", "c"], "USD");
+
+  const total = [...shares.values()].reduce((sum, v) => sum + v, 0);
+  // Use toBeCloseTo to sidestep binary floating point noise, but the point
+  // is this is now essentially exact (within a fraction of a cent), unlike
+  // the old per-share-rounding approach which was off by a whole cent.
+  expect(total).toBeCloseTo(100, 10);
+
+  // Largest-remainder method: 100/3 = 33.33 with 1 cent leftover, assigned
+  // deterministically to the first member when sorted by id ("a").
+  expect(shares.get("a")).toBe(33.34);
+  expect(shares.get("b")).toBe(33.33);
+  expect(shares.get("c")).toBe(33.33);
+});
+
+test("distributeEqualShares: $0.01 split 2 ways sums exactly to $0.01", () => {
+  const shares = distributeEqualShares(0.01, ["a", "b"], "USD");
+
+  const total = [...shares.values()].reduce((sum, v) => sum + v, 0);
+  expect(total).toBeCloseTo(0.01, 10);
+
+  // One member gets the single cent, the other gets zero.
+  const values = [...shares.values()].sort((x, y) => y - x);
+  expect(values).toEqual([0.01, 0]);
+});
+
+test("distributeEqualShares throws instead of dividing by zero for an empty member list", () => {
+  expect(() => distributeEqualShares(100, [], "USD")).toThrow();
+});
+
+test("settleTrip: equal split of an indivisible amount ($100/3) sums exactly to the expense total across members", () => {
+  const expenses: Expense[] = [
+    {
+      id: "1",
+      tripId: "trip",
+      expenseDate: "2026-03-25",
+      amount: 100,
+      currencyCode: "USD",
+      conversionRateToTripCurrency: 1,
+      tripAmount: 100,
+      category: "food",
+      paidByMemberId: "a",
+      involvedMemberIds: ["a", "b", "c"],
+      splitMode: "equal",
+      splitShares: null,
+      createdAt: "2026-03-25T10:00:00.000Z"
+    }
+  ];
+
+  const members: Member[] = [
+    { id: "a", displayName: "Alice" },
+    { id: "b", displayName: "Bob" },
+    { id: "c", displayName: "Charlie" }
+  ];
+
+  const settlement = settleTrip(expenses, members, [], "USD");
+
+  const totalOwed = settlement.balances.reduce((sum, b) => sum + b.owed, 0);
+  expect(totalOwed).toBeCloseTo(100, 10);
+
+  // Net balances across all members must sum to zero.
+  const totalNet = settlement.balances.reduce((sum, b) => sum + b.net, 0);
+  expect(Math.abs(totalNet)).toBeLessThan(0.01);
+
+  // Every dollar of the residual should be accounted for: total transfer
+  // amount from debtors should equal what creditors are owed.
+  const totalTransferred = settlement.transfers.reduce((sum, t) => sum + t.amount, 0);
+  const totalCredit = settlement.balances.filter((b) => b.net > 0).reduce((sum, b) => sum + b.net, 0);
+  expect(totalTransferred).toBeCloseTo(totalCredit, 2);
+});
+
+test("settleTrip: repeated indivisible splits ($0.01 across 2 members, many times) never drift", () => {
+  const expenses: Expense[] = Array.from({ length: 7 }, (_, i) => ({
+    id: `e${i}`,
+    tripId: "trip",
+    expenseDate: "2026-03-25",
+    amount: 0.01,
+    currencyCode: "USD",
+    conversionRateToTripCurrency: 1,
+    tripAmount: 0.01,
+    category: "food" as const,
+    paidByMemberId: "a",
+    involvedMemberIds: ["a", "b"],
+    splitMode: "equal" as const,
+    splitShares: null,
+    createdAt: "2026-03-25T10:00:00.000Z"
+  }));
+
+  const members: Member[] = [
+    { id: "a", displayName: "Alice" },
+    { id: "b", displayName: "Bob" }
+  ];
+
+  const settlement = settleTrip(expenses, members, [], "USD");
+
+  expect(settlement.totalTripSpend).toBeCloseTo(0.07, 10);
+  const totalNet = settlement.balances.reduce((sum, b) => sum + b.net, 0);
+  expect(Math.abs(totalNet)).toBeLessThan(0.01);
+});
+
+test("settleTrip: an expense with an empty involved-member list does not produce NaN/Infinity", () => {
+  const expenses: Expense[] = [
+    {
+      id: "1",
+      tripId: "trip",
+      expenseDate: "2026-03-25",
+      amount: 50,
+      currencyCode: "USD",
+      conversionRateToTripCurrency: 1,
+      tripAmount: 50,
+      category: "food",
+      paidByMemberId: "a",
+      involvedMemberIds: [], // corrupt/edge-case data — should never divide by zero
+      splitMode: "equal",
+      splitShares: null,
+      createdAt: "2026-03-25T10:00:00.000Z"
+    }
+  ];
+
+  const members: Member[] = [
+    { id: "a", displayName: "Alice" },
+    { id: "b", displayName: "Bob" }
+  ];
+
+  expect(() => settleTrip(expenses, members, [], "USD")).not.toThrow();
+
+  const settlement = settleTrip(expenses, members, [], "USD");
+  for (const balance of settlement.balances) {
+    expect(Number.isFinite(balance.paid)).toBe(true);
+    expect(Number.isFinite(balance.owed)).toBe(true);
+    expect(Number.isFinite(balance.net)).toBe(true);
+  }
+  expect(Number.isFinite(settlement.totalTripSpend)).toBe(true);
+  for (const transfer of settlement.transfers) {
+    expect(Number.isFinite(transfer.amount)).toBe(true);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// ZKU-53: Equal-split remainder distribution must respect the trip
+// currency's minor unit (whole yen for JPY, not fractional cents).
+// ---------------------------------------------------------------------------
+
+test("settleTrip: equal split respects a 0-decimal currency (JPY) — whole yen, no fractional remainder", () => {
+  const expenses: Expense[] = [
+    {
+      id: "1",
+      tripId: "trip",
+      expenseDate: "2026-03-25",
+      amount: 1000,
+      currencyCode: "JPY",
+      conversionRateToTripCurrency: 1,
+      tripAmount: 1000,
+      category: "food",
+      paidByMemberId: "a",
+      involvedMemberIds: ["a", "b", "c"],
+      splitMode: "equal",
+      splitShares: null,
+      createdAt: "2026-03-25T10:00:00.000Z"
+    }
+  ];
+
+  const members: Member[] = [
+    { id: "a", displayName: "Alice" },
+    { id: "b", displayName: "Bob" },
+    { id: "c", displayName: "Charlie" }
+  ];
+
+  const settlement = settleTrip(expenses, members, [], "JPY");
+
+  // 1000 / 3 = 333.33... — every member's owed share must be a whole yen amount.
+  for (const balance of settlement.balances) {
+    expect(Number.isInteger(balance.owed)).toBe(true);
+  }
+
+  const totalOwed = settlement.balances.reduce((sum, b) => sum + b.owed, 0);
+  expect(totalOwed).toBe(1000);
+});
+
+// ---------------------------------------------------------------------------
+// ZKU-55: Guard early-departure settlements against later expense changes —
+// block adding/editing an expense that involves an already-departed member.
+// ---------------------------------------------------------------------------
+
+test("assertNoDepartedMembersInExpense blocks a new expense that involves a departed member", () => {
+  const members: Member[] = [
+    { id: "a", displayName: "Alice", status: "active" },
+    { id: "b", displayName: "Bob", status: "active" },
+    { id: "d", displayName: "Dave", status: "departed" }
+  ];
+
+  expect(() =>
+    assertNoDepartedMembersInExpense(
+      { paidByMemberId: "a", involvedMemberIds: ["a", "b", "d"] },
+      members
+    )
+  ).toThrow(/Dave/);
+});
+
+test("assertNoDepartedMembersInExpense blocks an expense edit where the payer has departed", () => {
+  const members: Member[] = [
+    { id: "a", displayName: "Alice", status: "departed" },
+    { id: "b", displayName: "Bob", status: "active" }
+  ];
+
+  expect(() =>
+    assertNoDepartedMembersInExpense({ paidByMemberId: "a", involvedMemberIds: ["b"] }, members)
+  ).toThrow();
+});
+
+test("assertNoDepartedMembersInExpense allows expenses that only involve active members", () => {
+  const members: Member[] = [
+    { id: "a", displayName: "Alice", status: "active" },
+    { id: "b", displayName: "Bob", status: "active" },
+    { id: "d", displayName: "Dave", status: "departed" }
+  ];
+
+  expect(() =>
+    assertNoDepartedMembersInExpense(
+      { paidByMemberId: "a", involvedMemberIds: ["a", "b"] },
+      members
+    )
+  ).not.toThrow();
+});
+
+test("settleTrip: transfers still sum to zero net after an early departure, once later expenses only involve active members", () => {
+  // A pays $100 split among A, B, C, D
+  const expense1: Expense = {
+    id: "1",
+    tripId: "trip",
+    expenseDate: "2026-03-25",
+    amount: 100,
+    currencyCode: "USD",
+    conversionRateToTripCurrency: 1,
+    tripAmount: 100,
+    category: "food",
+    paidByMemberId: "a",
+    involvedMemberIds: ["a", "b", "c", "d"],
+    splitMode: "equal",
+    splitShares: null,
+    createdAt: "2026-03-25T10:00:00.000Z"
+  };
+
+  const members: Member[] = [
+    { id: "a", displayName: "Alice" },
+    { id: "b", displayName: "Bob" },
+    { id: "c", displayName: "Charlie" },
+    { id: "d", displayName: "Dave", status: "departed" }
+  ];
+
+  // D departed already. A later expense correctly excludes D (guarded by
+  // assertNoDepartedMembersInExpense before it ever reaches settleTrip).
+  const draftForNewExpense = { paidByMemberId: "b", involvedMemberIds: ["a", "b", "c"] };
+  expect(() => assertNoDepartedMembersInExpense(draftForNewExpense, members)).not.toThrow();
+
+  // Attempting to include D in that new expense must be blocked.
+  const draftIncludingDeparted = { paidByMemberId: "b", involvedMemberIds: ["a", "b", "c", "d"] };
+  expect(() => assertNoDepartedMembersInExpense(draftIncludingDeparted, members)).toThrow();
+
+  const expense2: Expense = {
+    id: "2",
+    tripId: "trip",
+    expenseDate: "2026-03-26",
+    amount: 90,
+    currencyCode: "USD",
+    conversionRateToTripCurrency: 1,
+    tripAmount: 90,
+    category: "transport",
+    paidByMemberId: "b",
+    involvedMemberIds: ["a", "b", "c"],
+    splitMode: "equal",
+    splitShares: null,
+    createdAt: "2026-03-26T10:00:00.000Z"
+  };
+
+  const earlySettlements: EarlySettlement[] = [{ fromMemberId: "d", toMemberId: "a", amount: 25 }];
+
+  const settlement = settleTrip([expense1, expense2], members, [], "USD", earlySettlements);
+
+  const totalNet = settlement.balances.reduce((sum, b) => sum + b.net, 0);
+  expect(Math.abs(totalNet)).toBeLessThan(0.01);
+
+  const totalDebt = settlement.balances.filter((b) => b.net < 0).reduce((sum, b) => sum + Math.abs(b.net), 0);
+  const totalCredit = settlement.balances.filter((b) => b.net > 0).reduce((sum, b) => sum + b.net, 0);
+  const totalTransferred = settlement.transfers.reduce((sum, t) => sum + t.amount, 0);
+
+  expect(totalTransferred).toBeCloseTo(Math.min(totalDebt, totalCredit), 2);
+});
