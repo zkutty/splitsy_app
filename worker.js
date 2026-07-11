@@ -104,9 +104,14 @@ export default {
           description: meta.description,
           url: `${SITE_URL}${pathname === "/" ? "/" : pathname}`,
         });
+        const headers = new Headers(response.headers);
+        // The injected body length differs from the original asset's
+        // Content-Length, so drop the stale header and let the runtime
+        // recompute it — otherwise strict clients/CDNs may truncate the page.
+        headers.delete("Content-Length");
         return new Response(injected, {
           status: response.status,
-          headers: response.headers,
+          headers,
         });
       }
     }
