@@ -1,5 +1,5 @@
 import { PropsWithChildren, useMemo } from "react";
-import { Pressable, StyleProp, StyleSheet, ViewStyle } from "react-native";
+import { Pressable, PressableStateCallbackType, StyleProp, StyleSheet, ViewStyle } from "react-native";
 
 import { AppText } from "./AppText";
 import { Theme, useAppTheme } from "../theme";
@@ -28,14 +28,18 @@ export function AppButton({
       onPress={onPress}
       disabled={disabled}
       hitSlop={4}
-      style={({ pressed, hovered }) => [
-        styles.base,
-        styles[variant],
-        fullWidth ? styles.fullWidth : styles.autoWidth,
-        (pressed || hovered) && !disabled ? styles.interactive : null,
-        disabled ? styles.disabled : null,
-        style
-      ]}
+      style={({ pressed, ...rest }: PressableStateCallbackType & { hovered?: boolean }) => {
+        const hovered = rest.hovered ?? false;
+
+        return [
+          styles.base,
+          styles[variant],
+          fullWidth ? styles.fullWidth : styles.autoWidth,
+          (pressed || hovered) && !disabled ? styles.interactive : null,
+          disabled ? styles.disabled : null,
+          style
+        ];
+      }}
     >
       <AppText variant="bodySm" color={variant === "secondary" ? "primary" : "inverse"} style={styles.label}>
         {children}

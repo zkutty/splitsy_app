@@ -1,10 +1,10 @@
 import type { Expense, MemberGroup, PaymentMethodType, Trip, TripActivityEvent, TripSettlementTransfer, UserProfile } from "@splitsy/domain";
-import { settleEarlyDeparture, settleTrip } from "@splitsy/domain";
+import { assertNoDepartedMembersInExpense, settleEarlyDeparture, settleTrip } from "@splitsy/domain";
 import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
 
 import { useSession } from "./session-provider";
-import { AddExpenseInput, createTripsRepository, demoOwnerProfile } from "../services/trips-repository";
+import { AddExpenseInput, TripInvite, createTripsRepository, demoOwnerProfile } from "../services/trips-repository";
 
 type TripsContextValue = {
   authMode: "supabase" | "demo";
@@ -19,8 +19,10 @@ type TripsContextValue = {
     startDate?: string;
     endDate?: string;
   }) => Promise<void>;
-  createTripInviteLink: (tripId: string) => Promise<string>;
+  createTripInviteLink: (tripId: string, maxUses?: number | null) => Promise<string>;
   acceptTripInvite: (token: string) => Promise<string>;
+  listTripInvites: (tripId: string) => Promise<TripInvite[]>;
+  revokeTripInvite: (inviteId: string) => Promise<void>;
   addTripMember: (tripId: string, input: { displayName: string; email?: string }) => Promise<void>;
   removeTripMember: (tripId: string, memberId: string) => Promise<void>;
   departTripMember: (tripId: string, memberId: string) => Promise<void>;
@@ -252,7 +254,11 @@ export function TripsProvider({ children }: PropsWithChildren) {
 
         setTrips((current) => [trip, ...current]);
       },
-      createTripInviteLink: async (tripId) => repository.createTripInvite(tripId),
+      createTripInviteLink: async (tripId, maxUses) => repository.createTripInvite(tripId, maxUses),
+      listTripInvites: async (tripId) => repository.listTripInvites(tripId),
+      revokeTripInvite: async (inviteId) => {
+        await repository.revokeTripInvite(inviteId);
+      },
       acceptTripInvite: async (token) => {
         if (session.authMode === "supabase" && !session.user) {
           throw new Error("You must be signed in to accept an invite.");
@@ -468,10 +474,26 @@ export function TripsProvider({ children }: PropsWithChildren) {
         );
       },
       addExpense: async (tripId, draft) => {
+        const trip = trips.find((item) => item.id === tripId);
+
+        if (trip) {
+          // Block adding an expense that involves a member who has already
+          // departed and been settled up — see assertNoDepartedMembersInExpense.
+          assertNoDepartedMembersInExpense(draft, trip.members);
+        }
+
         const expense = await repository.createExpense(tripId, draft);
         setExpenses((current) => [expense, ...current]);
       },
       updateExpense: async (expenseId, tripId, draft) => {
+        const trip = trips.find((item) => item.id === tripId);
+
+        if (trip) {
+          // Block editing an expense to involve a member who has already
+          // departed and been settled up — see assertNoDepartedMembersInExpense.
+          assertNoDepartedMembersInExpense(draft, trip.members);
+        }
+
         const expense = await repository.updateExpense(expenseId, tripId, draft);
         setExpenses((current) => current.map((item) => (item.id === expenseId ? expense : item)));
       },

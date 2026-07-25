@@ -65,7 +65,8 @@ export default function RootHtml({ children }: PropsWithChildren) {
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-title" content="SplitTrip" />
 
-        {/* Structured data */}
+        {/* Structured data — JSON-LD <script> tags can only be populated this way in React;
+            structuredData is server-defined, not user input. */}
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}

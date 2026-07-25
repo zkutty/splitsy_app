@@ -8,6 +8,9 @@
   },
   "scripts": {
     "typecheck": "bunx tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0"
   }
 }
 
